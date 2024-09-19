@@ -1,0 +1,11 @@
+body {
+    font-size: 0.875rem; /* 14px */
+}
+
+.header, .sidebar, .main-container {
+    font-size: 0.875rem; /* 14px */
+}
+
+.main-cards{
+    font-size: 0.875rem; /* 14px */
+}

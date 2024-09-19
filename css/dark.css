@@ -1,0 +1,15 @@
+body {
+    background-color: #343a40;
+    color: #ffffff;
+}
+
+.header, .sidebar, .main-container {
+    background-color:  #292a2b;
+    color: #ffffff;
+}
+
+.cards {
+    background-color: #495057;
+    border-color: #6c757d;
+}
+
