@@ -129,6 +129,35 @@ if (isset($_POST['add_fees'])) {
         $connect->close();
     }
 }
+
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['delete_payment'])) {
+    // Retrieve and validate the payment ID from POST data
+    $payment_id = isset($_POST['payment_id']) ? $_POST['payment_id'] : '';
+
+    // Validate the payment ID
+    if (!is_numeric($payment_id) || $payment_id <= 0) {
+        echo "<div class='alert alert-danger'>Invalid payment ID.</div>";
+        exit();
+    }
+
+    // Prepare SQL statement to delete the payment record
+    $stmt = $connect->prepare("DELETE FROM deposit WHERE payment_id = ?");
+    $stmt->bind_param("i", $payment_id);
+
+    // Execute the statement
+    if ($stmt->execute()) {
+        // Redirect or provide success feedback
+        header('Location: payment.php?msg=delete');
+        exit();
+    } else {
+        // Handle SQL execution error
+        echo "<div class='alert alert-danger'>Error: " . $stmt->error . "</div>";
+    }
+
+    // Close the statement
+    $stmt->close();
+}
+
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
 
@@ -201,8 +230,8 @@ $connect->close();
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -505,15 +534,21 @@ $connect->close();
         } else {
             ?>
             <h1 class="mt-2 head-update">Payment Management</h1>
-            <ol class="breadcrumb mb-4 small">
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
                 <li class="breadcrumb-item active">Payment and Invoices</li>
             </ol>
             <?php
             if (isset($_GET['msg'])) {
                 if ($_GET['msg'] == 'add') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle"></i>New Fees Successfully Added
+                        <i class="bi bi-check-circle"></i> New Fees Successfully Added
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'delete') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Payment Successfully Deleted
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
@@ -531,11 +566,7 @@ $connect->close();
                                 <input type="text" id="searchBar" class="form-control" placeholder="Search History..." onkeyup="searchInvoices()">
                             </div>
                             <!-- Button to trigger modal -->
-                            <?php if ($displayRole === 'Admin'): ?>
-                            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addFeesModal">
-                                Add Fees
-                            </button>
-                            <?php endif; ?>
+                           
                         </div>
 
                         <!-- Modal -->
@@ -644,180 +675,245 @@ $connect->close();
                     </div>
                 </div>
                 <div class="table-responsive">
-                    <div class="card-body">
-                        <!-- Invoices Section -->
-                        <div class="invoices-section mt-1 mb-2">
-                            <h3>My Payment History</h3>
-                            <?php
-                            // Re-open connection
-                            include('DB_connect.php');
+    <div class="card-body">
+        <!-- Invoices Section -->
+        <div class="invoices-section mt-1 mb-2">
+            <h3>My Payment History</h3>
+            <?php
+            // Re-open connection
+            include('DB_connect.php');
 
-                            // Check if student_id is set in the session
-                            if (isset($_SESSION['id'])) {
-                                $student_id = $_SESSION['id'];
-                               
-                            
-                                if ($connect instanceof mysqli) {
-                                    // Base query
-                                    $query = "
-                                        SELECT 
-                                            deposit.payment_id, 
-                                            students.student_name, 
-                                            students.student_number, 
-                                            deposit.payment_method, 
-                                            deposit.total_amount, 
-                                            deposit.paid_amount, 
-                                            deposit.status, 
-                                            deposit.payment_number, 
-                                            deposit.payment_date, 
-                                            deposit.due_date
-                                        FROM 
-                                            deposit
-                                        JOIN 
-                                            students ON deposit.student_id = students.student_id
-                                    ";
-                            
-                                    // Add filter based on user role
-    if ($displayRole === 'Student') {
-        // Student: Fetch payment history for the specific student
-        $query .= " WHERE deposit.student_id = ?";
-    } elseif ($displayRole === 'Parent') {
-        // Parent: Fetch payment history for all students related to this parent
-        $query .= " WHERE students.parent_id = ?";
-    } elseif ($displayRole === 'Admin') {
-        // Admin: Fetch payment history for all records
-        // No additional WHERE clause needed
-    } else {
-        echo 'No Payment Found.';
-        exit;
-    }
+            // Check if student_id is set in the session
+            if (isset($_SESSION['id'])) {
+                $student_id = $_SESSION['id'];
 
-    $stmt = $connect->prepare($query);
+                if ($connect instanceof mysqli) {
+                    // Define records per page
+                    $records_per_page = 10;
 
-    if ($stmt) {
-        // Bind the parameter based on role
-        if ($displayRole === 'Student' || $displayRole === 'Parent') {
-            $stmt->bind_param('i', $student_id); // Bind the logged-in user's ID
-        }
-    
-                                        $stmt->execute();
-                                        $result = $stmt->get_result();
-                            
-                                        if ($result->num_rows > 0) {
-                                            echo '<table class="table table-bordered" id="paymentTable">';
-                                            echo '<thead><tr><th>Student Name</th><th>Student Number</th><th>Payment Method</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Status</th><th>Payment Number</th><th>Payment Date</th><th>Due Date</th><th>Action</th></tr></thead><tbody>';
-                                            while ($row = $result->fetch_assoc()) {
-                                                $remainingAmount = $row['total_amount'] - $row['paid_amount'];
-                                                $payment_id = htmlspecialchars($row['payment_id']);
-                                                $view_modal_id = "viewPaymentModal{$payment_id}";
-                                                $view_modal_label = "viewPaymentModalLabel{$payment_id}";
-                                                $delete_modal_id = "deletePaymentModal{$payment_id}";
-                                                $delete_modal_label = "deletePaymentModalLabel{$payment_id}";
-                            
-                                                echo '<tr>';
-                                                echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['student_number']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['total_amount']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['paid_amount']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($remainingAmount) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['status']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['payment_number']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
-                                                echo '<td>' . htmlspecialchars($row['due_date']) . '</td>';
-                                                echo '<td>
-                                                    <div class="btn-group" role="group" aria-label="Actions">
-                                                        <button type="button" class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#' . $view_modal_id . '">
-                                                            <i class="bi bi-eye"></i> View
-                                                        </button>';
-                            
-                                                if ($displayRole=== 'Admin') {
-                                                    echo '<button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#' . $delete_modal_id . '">
-                                                        <i class="bi bi-trash"></i> Delete
-                                                    </button>';
-                                                }
-                            
-                                                echo '<!-- View Payment Modal -->
-                                                    <div class="modal fade" id="' . $view_modal_id . '" tabindex="-1" aria-labelledby="' . $view_modal_label . '" aria-hidden="true">
-                                                        <div class="modal-dialog modal-lg">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header">
-                                                                    <h5 class="modal-title" id="' . $view_modal_label . '">Payment Details</h5>
-                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                                </div>
-                                                                <div class="modal-body">
-                                                                    <p><strong>Payment ID:</strong> ' . htmlspecialchars($row['payment_id']) . '</p>
-                                                                    <p><strong>Student Name:</strong> ' . htmlspecialchars($row['student_name']) . '</p>
-                                                                    <p><strong>Student Number:</strong> ' . htmlspecialchars($row['student_number']) . '</p>
-                                                                    <p><strong>Payment Method:</strong> ' . htmlspecialchars($row['payment_method']) . '</p>
-                                                                    <p><strong>Total Amount:</strong> ' . htmlspecialchars($row['total_amount']) . '</p>
-                                                                    <p><strong>Paid Amount:</strong> ' . htmlspecialchars($row['paid_amount']) . '</p>
-                                                                    <p><strong>Remaining Amount:</strong> ' . htmlspecialchars($remainingAmount) . '</p>
-                                                                    <p><strong>Status:</strong> ' . htmlspecialchars($row['status']) . '</p>
-                                                                    <p><strong>Payment Number:</strong> ' . htmlspecialchars($row['payment_number']) . '</p>
-                                                                    <p><strong>Payment Date:</strong> ' . htmlspecialchars($row['payment_date']) . '</p>
-                                                                    <p><strong>Due Date:</strong> ' . htmlspecialchars($row['due_date']) . '</p>
-                                                                </div>
-                                                                <div class="modal-footer">
-                                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>';
-                            
-                                                if ($displayRole === 'Admin') {
-                                                    echo '<!-- Delete Payment Modal -->
-                                                    <div class="modal fade" id="' . $delete_modal_id . '" tabindex="-1" aria-labelledby="' . $delete_modal_label . '" aria-hidden="true">
-                                                        <div class="modal-dialog">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header">
-                                                                    <h5 class="modal-title" id="' . $delete_modal_label . '">Confirm Delete</h5>
-                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                                </div>
-                                                                <div class="modal-body">
-                                                                    Are you sure you want to delete this payment record?
-                                                                </div>
-                                                                <div class="modal-footer">
-                                                                    <form action="payment.php?action=delete" method="post">
-                                                                        <input type="hidden" name="payment_id" value="' . $payment_id . '">
-                                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                                        <button type="submit" name="delete_payment" class="btn btn-danger">Delete</button>
-                                                                    </form>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>';
-                                                }
-                            
-                                                echo '</div>
-                                                    </td>';
-                                                echo '</tr>';
-                                            }
-                                            echo '</tbody></table>';
-                                        } else {
-                                            echo '<p>No payment records found.</p>';
-                                        }
-                                        $stmt->close();
-                                    } else {
-                                        echo '<p>Failed to prepare SQL statement for payments.</p>';
-                                    }
-                            
-                                    $connect->close();
-                                } else {
-                                    echo '<p>Database connection is not valid.</p>';
-                                }
-                            } else {
-                                echo '<p>Student ID not found in session.</p>';
+                    // Get current page number from query string, default to 1 if not set
+                    $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+                    $current_page = max($current_page, 1); // Ensure it's at least 1
+
+                    // Calculate the offset for the SQL query
+                    $offset = ($current_page - 1) * $records_per_page;
+
+                    // Base query
+                    $query = "
+                        SELECT 
+                            deposit.payment_id, 
+                            students.student_name, 
+                            students.student_number, 
+                            deposit.payment_method, 
+                            deposit.total_amount, 
+                            deposit.paid_amount, 
+                            deposit.status, 
+                            deposit.remaining_amount,
+                            deposit.payment_number, 
+                            deposit.payment_date, 
+                            deposit.due_date
+                        FROM 
+                            deposit
+                        JOIN 
+                            students ON deposit.student_id = students.student_id
+                    ";
+
+                    // Add filter based on user role
+                    if ($displayRole === 'Student') {
+                        $query .= " WHERE deposit.student_id = ?";
+                    } elseif ($displayRole === 'Parent') {
+                        $query .= " WHERE students.parent_id = ?";
+                    } elseif ($displayRole === 'Admin') {
+                        // No additional WHERE clause needed
+                    } else {
+                        echo 'No Payment Found.';
+                        exit;
+                    }
+
+                    // Add LIMIT and OFFSET for pagination
+                    $query .= " LIMIT ? OFFSET ?";
+
+                    $stmt = $connect->prepare($query);
+
+                    if ($stmt) {
+                        // Bind the parameter based on role
+                        if ($displayRole === 'Student' || $displayRole === 'Parent') {
+                            $stmt->bind_param('iii', $student_id, $records_per_page, $offset);
+                        } else {
+                            $stmt->bind_param('ii', $records_per_page, $offset);
+                        }
+
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+
+                        // Count total records
+                        $total_query = "
+                            SELECT COUNT(*) as total FROM deposit
+                            JOIN students ON deposit.student_id = students.student_id
+                        ";
+
+                        if ($displayRole === 'Student') {
+                            $total_query .= " WHERE deposit.student_id = ?";
+                        } elseif ($displayRole === 'Parent') {
+                            $total_query .= " WHERE students.parent_id = ?";
+                        }
+
+                        $total_stmt = $connect->prepare($total_query);
+                        if ($total_stmt) {
+                            if ($displayRole === 'Student' || $displayRole === 'Parent') {
+                                $total_stmt->bind_param('i', $student_id);
                             }
-                            ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                            $total_stmt->execute();
+                            $total_result = $total_stmt->get_result();
+                            $total_row = $total_result->fetch_assoc();
+                            $total_records = $total_row['total'];
+                            $total_pages = ceil($total_records / $records_per_page);
+                        }
+                        $total_stmt->close();
+
+                        if ($result->num_rows > 0) {
+                            echo '<table class="table table-bordered" id="invoiceTable">';
+                            echo '<thead><tr><th>Student Name</th><th>Student Number</th><th>Payment Method</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Status</th><th>Payment Number</th><th>Payment Date</th><th>Due Date</th><th>Action</th></tr></thead><tbody>';
+                            while ($row = $result->fetch_assoc()) {
+                                //$remainingAmount = $row['total_amount'] - $row['paid_amount'];
+                                $payment_id = htmlspecialchars($row['payment_id']);
+                                $view_modal_id = "viewPaymentModal{$payment_id}";
+                                $view_modal_label = "viewPaymentModalLabel{$payment_id}";
+                                $delete_modal_id = "deletePaymentModal{$payment_id}";
+                                $delete_modal_label = "deletePaymentModalLabel{$payment_id}";
+
+                                echo '<tr>';
+                                echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['student_number']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['total_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['paid_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['remaining_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['status']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_number']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['due_date']) . '</td>';
+                                echo '<td>
+                                    <div class="btn-group" role="group" aria-label="Actions">
+                                        <button type="button" class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#' . $view_modal_id . '">
+                                            <i class="bi bi-eye"></i>View
+                                        </button>';
+
+                                if ($displayRole === 'Admin') {
+                                    echo '<button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#' . $delete_modal_id . '">
+                                        <i class="bi bi-trash"></i>Delete
+                                    </button>';
+                                }
+
+                                echo '<!-- View Payment Modal -->
+                                    <div class="modal fade" id="' . $view_modal_id . '" tabindex="-1" aria-labelledby="' . $view_modal_label . '" aria-hidden="true">
+                                        <div class="modal-dialog modal-lg">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title" id="' . $view_modal_label . '">Payment Details</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p><strong>Payment ID:</strong> ' . htmlspecialchars($row['payment_id']) . '</p>
+                                                    <p><strong>Student Name:</strong> ' . htmlspecialchars($row['student_name']) . '</p>
+                                                    <p><strong>Student Number:</strong> ' . htmlspecialchars($row['student_number']) . '</p>
+                                                    <p><strong>Payment Method:</strong> ' . htmlspecialchars($row['payment_method']) . '</p>
+                                                    <p><strong>Total Amount:</strong> ' . htmlspecialchars($row['total_amount']) . '</p>
+                                                    <p><strong>Paid Amount:</strong> ' . htmlspecialchars($row['paid_amount']) . '</p>
+                                                    <p><strong>Remaining Amount:</strong> ' . htmlspecialchars($row['remaining_amount']) . '</p>
+                                                    <p><strong>Status:</strong> ' . htmlspecialchars($row['status']) . '</p>
+                                                    <p><strong>Payment Number:</strong> ' . htmlspecialchars($row['payment_number']) . '</p>
+                                                    <p><strong>Payment Date:</strong> ' . htmlspecialchars($row['payment_date']) . '</p>
+                                                    <p><strong>Due Date:</strong> ' . htmlspecialchars($row['due_date']) . '</p>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>';
+
+                                if ($displayRole === 'Admin') {
+                                    echo '<!-- Delete Payment Modal -->
+                                    <div class="modal fade" id="' . $delete_modal_id . '" tabindex="-1" aria-labelledby="' . $delete_modal_label . '" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title" id="' . $delete_modal_label . '">Confirm Delete</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    Are you sure you want to delete this payment record?
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <form action="payment.php?action=delete" method="post">
+                                                        <input type="hidden" name="payment_id" value="' . $payment_id . '">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                        <button type="submit" name="delete_payment" class="btn btn-danger">Delete</button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>';
+                                }
+
+                                echo '</div>
+                                    </td>';
+                                echo '</tr>';
+                            }
+                            echo '</tbody></table>';
+
+                            // Pagination controls
+                            echo '<nav aria-label="Page navigation example">';
+                            echo '<ul class="pagination justify-content-start">';
+                            
+                            // Previous button
+                            echo '<li class="page-item ' . ($current_page <= 1 ? 'disabled' : '') . '">';
+                            echo '<a class="page-link" href="?page=' . ($current_page - 1) . '" aria-label="Previous">';
+                            echo 'Previous';
+                            echo '</a>';
+                            echo '</li>';
+                            
+                            // Page numbers
+                            for ($i = 1; $i <= $total_pages; $i++) {
+                                echo '<li class="page-item ' . ($current_page == $i ? 'active' : '') . '">';
+                                echo '<a class="page-link" href="?page=' . $i . '">' . $i . '</a>';
+                                echo '</li>';
+                            }
+                            
+                            // Next button
+                            echo '<li class="page-item ' . ($current_page >= $total_pages ? 'disabled' : '') . '">';
+                            echo '<a class="page-link" href="?page=' . ($current_page + 1) . '" aria-label="Next">';
+                            echo 'Next';
+                            echo '</a>';
+                            echo '</li>';
+                            
+                            echo '</ul>';
+                            echo '</nav>';
+                        } else {
+                            echo '<p>No payment records found.</p>';
+                        }
+                        $stmt->close();
+                    } else {
+                        echo '<p>Failed to prepare SQL statement for payments.</p>';
+                    }
+
+                    $connect->close();
+                } else {
+                    echo '<p>Database connection is not valid.</p>';
+                }
+            } else {
+                echo '<p>Student ID not found in session.</p>';
+            }
+            ?>
+        </div>
+    </div>
+</div>
+        </div>
             
             <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs">
-                    Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
                 </div>
             </footer>
             </div>
@@ -885,33 +981,31 @@ document.addEventListener('DOMContentLoaded', function() {
         window.open(pdfUrl, '_blank');
     }
 });
-               function searchInvoices() {
-                var input, filter, table, rows, cells, i, j, match;
-                input = document.getElementById("searchBar");
-                filter = input.value.toLowerCase();
-                table = document.getElementById("invoiceTable");
-                rows = table.getElementsByTagName("tr");
-        
-                for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
-                    cells = rows[i].getElementsByTagName("td");
-                    match = false;
-        
-                    for (j = 0; j < cells.length; j++) {
-                        if (cells[j]) {
-                            if (cells[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
-                                match = true;
-                            }
-                        }
-                    }
-        
-                    if (match) {
-                        rows[i].style.display = "";
-                    } else {
-                        rows[i].style.display = "none";
-                    }
+function searchInvoices() {
+    var input, filter, table, rows, cells, i, j, match;
+    input = document.getElementById("searchBar");
+    filter = input.value.toLowerCase();
+    table = document.getElementById("invoiceTable");
+    rows = table.getElementsByTagName("tr");
+
+    for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+        cells = rows[i].getElementsByTagName("td");
+        match = false;
+
+        for (j = 0; j < cells.length; j++) {
+            if (cells[j]) {
+                // Check if the cell contains the filter text
+                if (cells[j].innerText.toLowerCase().includes(filter)) {
+                    match = true;
+                    break; // Stop searching once a match is found
                 }
             }
-        
+        }
+
+        // Display the row if a match is found, otherwise hide it
+        rows[i].style.display = match ? "" : "none";
+    }
+}
             let sideBarOpen = false;
             let menuIcon = document.querySelector('.sidebar');
         

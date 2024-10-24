@@ -348,6 +348,49 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
     // Close the statement
     $stmt->close();
 }
+function generateFakeEmail($baseName) {
+    // Define an array of domains
+    $domains = [
+        'gmail.com'
+    ];
+
+    // Check if the Email Generator extension function exists
+    if (function_exists('generateEmail')) {
+        return generateEmail($baseName); // Use the extension's function if available
+    } else {
+        // Randomly select a domain from the array
+        $randomDomain = $domains[array_rand($domains)];
+        return $baseName . '@' . $randomDomain; // Generate the fake email
+    }
+}
+
+$parentEmail = generateFakeEmail('parent');
+
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
 
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
@@ -419,8 +462,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -692,16 +735,12 @@ if ($settingsResult) {
                       if($user_row = $result->fetch_assoc()){
                     ?>
                      <h1 class="mt-2 head-update">Parent Management</h1>
-                <ol class="breadcrumb mb-4 small">
-                    <li class="breadcrumb-item"><a href="dashboard.php">Admin Dashboard</a></li>
-                    <li class="breadcrumb-item active"><a href="parents.php">Parent Management</a></li>
+                  <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;" >
+                    <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                    <li class="breadcrumb-item active"><a href="parents.php"  style="color: #f8f9fa;">Parent Management</a></li>
                     <li class="breadcrumb-item active">Edit Parent</li>
                 </ol>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                <?php if (!empty($errors)): ?>
+                <?php if (!empty($errors)): ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <?php foreach ($errors as $error): ?>
             <div><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
@@ -709,6 +748,11 @@ if ($settingsResult) {
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 <?php endif; ?>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card mb-4">
+                                <div class="card-header">
+                             
                                     <span class="material-symbols-outlined">manage_accounts</span>Parent Edit Form
                                 </div>
                                 <div class="card-body">
@@ -761,7 +805,7 @@ if ($settingsResult) {
                     </div>
                     <footer class="main-footer px-3">
                         <div class="pull-right hidden-xs"> 
-                            Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                        <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>  
                         </div>
                     </footer>
                     <?php
@@ -771,8 +815,8 @@ if ($settingsResult) {
         } else {
             ?>
                 <h1 class="mt-2 head-update">Parent Management</h1>
-                <ol class="breadcrumb mb-4 small">
-                    <li class="breadcrumb-item"><a href="dashboard.php">Admin Dashboard</a></li>
+                <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;" >
+                    <li class="breadcrumb-item"><a href="dashboard.php"   style="color: #f8f9fa;">Dashboard</a></li>
                     <li class="breadcrumb-item active">Parent Management</li>
                 </ol>
             <?php
@@ -814,7 +858,7 @@ if ($settingsResult) {
                         <div class="col-md-6 d-flex justify-content-end align-items-center">
                             <!-- Search Bar -->
                             <div class="mb-0 me-3">
-                                <input type="text" id="searchBar" class="form-control" placeholder="Search Invoices..." onkeyup="searchInvoices()">
+                                <input type="text" id="searchBar" class="form-control" placeholder="Search Parent..." onkeyup="searchInvoices()">
                             </div>
                             <!-- Button to trigger modal -->
                             <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addParentModal">
@@ -837,9 +881,9 @@ if ($settingsResult) {
                         <input type="text" class="form-control" id="parentName" name="parent_name" placeholder="Enter FullName">
                     </div>
                     <div class="mb-3">
-                        <label for="parentEmail" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="parentEmail" name="parent_email" placeholder="Enter Email">
-                    </div>
+    <label for="parentEmail" class="form-label">Email</label>
+    <input type="email" class="form-control" id="parentEmail" name="parent_email" value="<?php echo htmlspecialchars($parentEmail); ?>" readonly>
+</div>
                     <div class="mb-3">
                         <label for="parentAddress" class="form-label">Address</label>
                         <input type="text" class="form-control" id="parentAddress" name="parent_address" placeholder="Enter Address" >
@@ -990,7 +1034,7 @@ if ($connect instanceof mysqli) {
                                     Are you sure you want to delete this parent record?
                                 </div>
                                 <div class="modal-footer">
-                                    <form action="parent.php?action=delete" method="post">
+                                    <form action="parents.php?action=delete" method="post">
                                      <input type="hidden" name="parent_id" value="'.$parent_id.'">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                         <button type="submit" name="delete_parent" class="btn btn-danger">Delete</button>
@@ -1038,7 +1082,7 @@ if ($connect instanceof mysqli) {
             
             <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs">
-                    Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
                 </div>
             </footer>
             </div>
@@ -1048,6 +1092,29 @@ if ($connect instanceof mysqli) {
             </main>
         <!-- main-->
             <script>
+              
+                function searchInvoices() {
+    var input, filter, table, rows, cells, i, j, match;
+    input = document.getElementById("searchBar");
+    filter = input.value.toLowerCase();
+    table = document.getElementById("parentTable");
+    rows = table.getElementsByTagName("tr");
+
+    for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+        cells = rows[i].getElementsByTagName("td");
+        match = false;
+
+        for (j = 0; j < cells.length; j++) {
+            if (cells[j]) {
+                if (cells[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
+                    match = true;
+                }
+            }
+        }
+
+        rows[i].style.display = match ? "" : "none";
+    }
+}
             let sideBarOpen = false;
             let menuIcon = document.querySelector('.sidebar');
         

@@ -174,10 +174,10 @@ $connect->close();
     
 <!--form control contact us-->
 
- <section>
- <div class="credit">@copyright; 2023 My Website. All rights reserved.</div>
- </section>
-
-    
+<footer class="main-footer px-3">
+                <div class="pull-right hidden-xs">
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
+                </div>
+            </footer>
 </body>
 </html>

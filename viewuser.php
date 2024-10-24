@@ -150,7 +150,7 @@ if ($settingsResult) {
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -363,8 +363,8 @@ if ($settingsResult) {
     <div class="container-fluid">
         <h1 class="mt-2 head-update">Profile</h1>
 
-        <ol class="breadcrumb mb-4 small">
-            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+        <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+            <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
             <li class="breadcrumb-item active">View User Information</li>
         </ol>
 
@@ -436,7 +436,7 @@ if ($settingsResult) {
               <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs">
                   
-                Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
               </footer>
         </main>
          <!--main-->

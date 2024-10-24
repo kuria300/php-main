@@ -13,6 +13,7 @@ if ($settingsResult) {
     if ($settings) {
         // Safely access the settings array
         $systemName = htmlspecialchars($settings['system_name']);
+        $systemName = str_replace('A', '<span class="purple">A</span>', $systemName);
         
     } else {
         // Handle case when no settings are found
@@ -53,7 +54,7 @@ $connect->close();
     <!--Navbar-->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="change-color"><?php echo $systemName; ?></bold></span></a>
+        <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="purple"><?php echo $systemName; ?></bold></span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -79,7 +80,7 @@ $connect->close();
  <div class="credit">
  <footer class="text-white text-center py-1">
         <div class="container">
-            <p>&copy; 2023 <?php echo $systemName; ?>. All rights reserved.</p>
+        <p>&copy; <?php echo date('Y'); ?> <?php echo $systemName; ?></a>. All rights reserved.</p>
         </div>
     </footer></div>
   <!--footer-->

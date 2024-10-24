@@ -56,8 +56,8 @@ if (isset($_SESSION['id']) && $displayRole === 'Parent') {
         $query = "
             SELECT m.id, m.message 
             FROM messages m
-            JOIN students ON m.user_id = students.student_id
-            WHERE students.parent_id = ?
+            JOIN students s ON m.user_id = s.student_id
+            WHERE s.parent_id = ? AND m.status = 'active' AND m.is_read = 0
         ";
 
         $stmt = $connect->prepare($query);
@@ -82,6 +82,7 @@ if (isset($_SESSION['id']) && $displayRole === 'Parent') {
 
 if ($connect instanceof mysqli) {
     $student_id = $_SESSION['id']; // Assuming student ID is stored in session
+
     $query = "SELECT AVG(grade) AS average_grade FROM grades WHERE student_id = ?";
     $stmt = $connect->prepare($query);
     if ($stmt) {
@@ -103,39 +104,43 @@ if ($connect instanceof mysqli) {
     
     // Retrieve the course count
     $course_count = $data['course_count'] ?? 0;
-$stmt->close();
+
     // Fetch total attendance and present attendance
     $query = "
     SELECT course_id
-    FROM students
+    FROM enrollments
     WHERE student_id = ?
     ";
     
     $stmt = $connect->prepare($query);
-    $stmt->bind_param('i', $userId);
+    $stmt->bind_param('i', $student_id);
     $stmt->execute();
     $result = $stmt->get_result();
-    $data = $result->fetch_assoc();
     
-    $course_id = $data['course_id'] ?? null;
+    $course_ids = [];
+    while ($row = $result->fetch_assoc()) {
+        $course_ids[] = $row['course_id'];
+    }
     
-    $stmt->close();
+    $attendance_percentages = [];
 
+    foreach ($course_ids as $course_id) {
+        $query = "
+         SELECT a.course_id, c.course_name, a.attendance_percentage
+    FROM attendance a
+    JOIN courses c ON a.course_id = c.course_id
+    WHERE a.student_id = ?
+        ";
+    
+        $stmt = $connect->prepare($query);
+        $stmt->bind_param('i', $student_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $data = $result->fetch_assoc();
+    
+        $attendance_percentages[$data['course_name']] = $data['attendance_percentage'];
 
-    $query = "
-SELECT attendance_percentage
-FROM attendance
-WHERE student_id = ? AND course_id = ?
-";
-
-$stmt = $connect->prepare($query);
-$stmt->bind_param('ii', $userId, $course_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$data = $result->fetch_assoc();
-
-$attendance_percentage = $data['attendance_percentage'] ?? 0;
-
+    }
 $stmt->close();
 }
 
@@ -286,8 +291,31 @@ $total_deposited_fees_paid = $total_deposited_fees_paid ?: 0;
 $total_deposited_fees_pending = $total_deposited_fees_pending ?: 0;
 $pending_fees = $pending_fees ?: 0;
 
+$query = "";
+$imageField = "";
 
- // Fetch user preferences
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
   
  $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
@@ -363,7 +391,7 @@ $connect->close();
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -703,11 +731,21 @@ $connect->close();
              <h1><?php echo htmlspecialchars($course_count); ?></h1>
            </div>
             <div class="cards">
-                <div class="card-inner">
-                    <h3>Attendance</h3>
-                    <span class="material-symbols-outlined">check_circle</span>
-                </div>
-                <h1><?php echo htmlspecialchars($attendance_percentage); ?>%</h1>
+            <div class="card-inner">
+            <h3>Attendance</h3>
+    <span class="material-symbols-outlined">check_circle</span>
+</div>
+<?php if (!empty($attendance_percentages)): ?>
+    <?php foreach ($attendance_percentages as $course_id => $attendance_percentage): ?>
+        <?php if ($attendance_percentage > 0): ?> <!-- Only display if greater than 0 -->
+            <div class="attendance-info">
+                <h1><?php echo htmlspecialchars($data['course_name']); ?> - <?php echo htmlspecialchars($attendance_percentage); ?>%</h1>
+            </div>
+        <?php endif; ?>
+    <?php endforeach; ?>
+<?php else: ?>
+    <h1>No attendance data available.</h1>
+<?php endif; ?>
             </div>
         </div>
         

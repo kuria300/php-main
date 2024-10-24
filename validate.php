@@ -77,12 +77,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     header("Location: dashboard.php");
                     exit;
                 } else {
-                    $err = "Incorrect email or password";
+                    $err = "Incorrect email, password or role";
                     header("Location: ./Admin.php?error=" . urlencode($err));
                     exit;
                 }
             } else {
-                $err = "Incorrect email or password";
+                $err = "Incorrect email, password or role";
                 header("Location: ./Admin.php?error=" . urlencode($err));
                 exit;
             }

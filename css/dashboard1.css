@@ -85,7 +85,7 @@ body{
     cursor:pointer;
 }
 .sidebar-list-item:hover{
-    background-color: rgba(255,255,255,0.2);
+    background-color: rgba(219, 212, 212, 0.2);
     cursor: pointer;
     
 }

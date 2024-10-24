@@ -119,6 +119,9 @@ if (isset($_GET['token'])) {
                 <div class="mb-4">
                     <button type="submit" name="update_password" class="btn btn-primary">Update Password</button>
                 </div>
+                <div class="mb-4">
+        <a href="Admin.php" class="btn btn-secondary">Back to Login</a>
+    </div>
             </form>
         </div>
     </section>

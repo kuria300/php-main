@@ -172,6 +172,63 @@ while ($row = $coursesResult->fetch_assoc()) {
 $studentsJson = json_encode($students);
 $coursesJson = json_encode($courses);
 
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['delete_attendance'])) {
+    // Retrieve and validate the attendance ID from POST data
+    $attendance_id = isset($_POST['attendance_id']) ? intval($_POST['attendance_id']) : '';
+
+    // Validate the attendance ID
+    if (empty($attendance_id) || !is_numeric($attendance_id) || $attendance_id <= 0) {
+        echo "<div class='alert alert-danger'>Invalid attendance ID.</div>";
+        exit();
+    }
+
+    // Prepare SQL statement to delete the attendance record
+    $stmt = $connect->prepare("DELETE FROM attendance WHERE attendance_id = ?");
+    if ($stmt === false) {
+        echo "<div class='alert alert-danger'>Error preparing the statement: " . htmlspecialchars($connect->error) . "</div>";
+        exit();
+    }
+
+    $stmt->bind_param("i", $attendance_id);
+
+    // Execute the statement
+    if ($stmt->execute()) {
+        // Redirect or provide success feedback
+        header('Location: attendance.php?msg=delete_success');
+        exit();
+    } else {
+        // Handle SQL execution error
+        echo "<div class='alert alert-danger'>Error: " . htmlspecialchars($stmt->error) . "</div>";
+    }
+
+    // Close the statement
+    $stmt->close();
+}
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
 
@@ -243,8 +300,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -504,9 +561,9 @@ if ($settingsResult) {
                 if (isset($_GET['id'])) {
                     ?>
                     <h1 class="mt-2 head-update">Attendance Management</h1>
-    <ol class="breadcrumb mb-4 small">
-        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-        <li class="breadcrumb-item"><a href="attendance.php">Attendance</a></li>
+    <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+        <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="attendance.php" style="color: #f8f9fa;">All Attendance</a></li>
         <li class="breadcrumb-item active">Edit Attendance</li>
     </ol>
     <div class="row">
@@ -533,7 +590,7 @@ if ($settingsResult) {
     </div>
     <footer class="main-footer px-3">
         <div class="pull-right hidden-xs"> 
-            Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+        <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p> 
         </div>
     </footer>
                     <?php
@@ -542,15 +599,27 @@ if ($settingsResult) {
         } else {
             ?>
             <h1 class="mt-2 head-update">Attendance Management</h1>
-            <ol class="breadcrumb mb-4 small">
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                <li class="breadcrumb-item active">Attendance</li>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                <li class="breadcrumb-item active">All Attendance</li>
             </ol>
             <?php
             if (isset($_GET['msg'])) {
                 if ($_GET['msg'] == 'add') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle"></i>Attendance records have been successfully added for the semester.
+                        <i class="bi bi-check-circle"></i> Attendance records have been successfully added for the semester.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'delete_success') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Attendance records deleted successfully
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'edit') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Attendance records updated successfully
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
@@ -625,7 +694,7 @@ if ($settingsResult) {
     <table class="table table-striped" id="invoicesTable">
         <thead>
             <tr>
-                <th>Attendance ID</th>
+               
                 <th>Student Name</th>
                 <th>Course Name</th>
                 <th>Semester Start</th>
@@ -684,7 +753,7 @@ LIMIT ? OFFSET ?";
               FROM attendance a
               JOIN students s ON a.student_id = s.student_id
               JOIN courses c ON a.course_id = c.course_id
-              WHERE s.parent_id = ?
+              WHERE s.student_id = ?
               LIMIT ? OFFSET ?";
                 $stmt = $connect->prepare($query);
                 $stmt->bind_param("iii", $userId, $results_per_page, $offset);
@@ -702,7 +771,7 @@ LIMIT ? OFFSET ?";
                 $view_modal_label = "viewAttendanceModalLabel{$row['attendance_id']}";
 
                 echo "<tr>
-                    <td>{$row['attendance_id']}</td>
+                   
                     <td>{$row['student_name']}</td>
                     <td>{$row['course_name']}</td>
                     <td>{$row['semester_start']}</td>
@@ -715,31 +784,32 @@ LIMIT ? OFFSET ?";
                 </button>";
                 // Conditionally render the Edit and Delete buttons for Admins
                 if ($displayRole === 'Admin') {
-                    echo "    <a href='attendance.php?action=edit&id={$attendance_id}' class='btn btn-warning'>Edit</a>
+                    echo "    <a href='attendance.php?action=edit&id={$attendance_id}' class='btn btn-warning btn-sm'>Edit</a>
                             <button type='button' class='btn btn-danger btn-sm' data-bs-toggle='modal' data-bs-target='#{$delete_modal_id}'>
-                                <i class='bi bi-trash'></i>
+                                <i class='bi bi-trash'></i> Delete
                             </button>
 
                             <!-- Modal -->
                             <div class='modal fade' id='{$delete_modal_id}' tabindex='-1' aria-labelledby='{$delete_modal_label}' aria-hidden='true'>
-                                <div class='modal-dialog'>
-                                    <div class='modal-content'>
-                                        <div class='modal-header'>
-                                            <h5 class='modal-title' id='{$delete_modal_label}'>Confirm Delete</h5>
-                                            <button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>
-                                        </div>
-                                        <div class='modal-body'>
-                                            Are you sure you want to delete this attendance record?
-                                        </div>
-                                        <div class='modal-footer'>
-                                            <form action='attendance.php?action=delete&id={$attendance_id}' method='post'>
-                                                <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Cancel</button>
-                                                <button type='submit' class='btn btn-danger'>Delete</button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>";
+                    <div class='modal-dialog'>
+                        <div class='modal-content'>
+                            <div class='modal-header'>
+                                <h5 class='modal-title' id='{$delete_modal_label}'>Confirm Delete</h5>
+                                <button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>
+                            </div>
+                            <div class='modal-body'>
+                                Are you sure you want to delete this attendance record?
+                            </div>
+                            <div class='modal-footer'>
+                                <form action='attendance.php?action=delete' method='post'>
+                                    <input type='hidden' name='attendance_id' value='{$attendance_id}'>
+                                    <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Cancel</button>
+                                    <button type='submit' class='btn btn-danger' name='delete_attendance'>Delete</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>";
                 }
 
                 echo "  </td>

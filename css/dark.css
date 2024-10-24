@@ -1,11 +1,11 @@
 body {
-    background-color: #343a40;
-    color: #ffffff;
+    background-color: #5a5e61;
+    color: #000000;
 }
 
 .header, .sidebar, .main-container {
-    background-color:  #292a2b;
-    color: #ffffff;
+    background-color:  #363636;
+    color: #f3f1f1;
 }
 
 .cards {

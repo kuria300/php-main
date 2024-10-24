@@ -130,17 +130,24 @@ $connect->close();
      <section class="contact-us">
      <div class="form-container">
     <form action="contact.php" method="POST" class="form-contact">
+    <?php if (!empty($errors)): ?>
+                <div class="alert alert-danger" role="alert">
+                    <?php foreach ($errors as $error): ?>
+                        <p><?php echo $error; ?></p>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         <h3 class="mb-2 mt-2">How Can we Help You?</h3>
       <div class="mb-4 mt-4">
        <label for="exampleFormControlInput1" class="form-label">Email address<span>*</span></label>
-       <input type="email" class="form-control" name="email" id="exampleFormControlInput1" placeholder="name@example.com">
+       <input type="email" class="form-control" name="email" id="exampleFormControlInput1" placeholder="name@example.com" required>
       </div>
       <div class="mb-4 mt-4">
       <label for="exampleFormControlInput1" class="form-label">Name<span>*</span></label>
-      <input type="text" class="form-control" name="name" id="exampleFormControlInput1" placeholder="name">
+      <input type="text" class="form-control" name="name" id="exampleFormControlInput1" placeholder="name" required>
       </div>
       <div class="mb-4">
-         <label for="exampleFormControlTextarea1" class="form-label">Leave Comment<span>*</span></label>
+         <label for="exampleFormControlTextarea1" class="form-label">Leave a Comment<span>*</span></label>
          <textarea class="form-control" name="comment" id="exampleFormControlTextarea1" rows="4"></textarea>
       </div>
       <div class="mb-4">

@@ -43,7 +43,7 @@ if ($result) {
 
 // Get overdue payments
 $currentDate = date('Y-m-d');
-$query = "SELECT payment_id, student_id, total_amount,paid_amount, due_date FROM deposit WHERE due_date < ? AND status = 'pending'";
+$query = "SELECT payment_id, student_id, total_amount,paid_amount, remaining_amount, due_date FROM deposit WHERE due_date < ? AND status = 'pending'";
 $stmt = $connect->prepare($query);
 $stmt->bind_param('s', $currentDate);
 $stmt->execute();
@@ -109,7 +109,7 @@ function sendReminder($connect, $payment, $student, $smtpDetails) {
     $userId = $_SESSION['id']; 
     $userRole = $_SESSION['role'];
     $message = "Dear " . ($student['student_id'] ? 'Student' : 'Parent') . 
-    "You have a payment of Ksh" . number_format($amount, 2) . " with an amount already paid of Ksh" . number_format($paid_amount, 2) . "due on $dueDate." . 
+     "You have a payment of Ksh"  . number_format($amount, 2) .   " with an amount already paid of Ksh"  . number_format($paid_amount, 2) .  "due on $dueDate." . 
     "Please make sure to complete the payment before the due date to avoid any penalties. Thank you.";
 
   
@@ -261,19 +261,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'success' && isset($_POST['del
     $stmt->close();
 }
 
-$items_per_page = 10; // Number of items per page
-$current_page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$offset = ($current_page - 1) * $items_per_page;
+$items_per_page_reminders = 10; // Number of items per page
+$current_page_reminders = isset($_GET['page_reminders']) ? intval($_GET['page_reminders']) : 1;
+$offset_reminders = ($current_page_reminders - 1) * $items_per_page_reminders;
 
-// Get total records for pagination
-$stmt_total = $connect->prepare("
-    SELECT COUNT(*) AS total_records
-    FROM reminders
-");
-$stmt_total->execute();
-$result_total = $stmt_total->get_result();
-$total_records = $result_total->fetch_assoc()['total_records'];
-$total_pages = ceil($total_records / $items_per_page);
+// Get total records for reminders
+$stmt_total_reminders = $connect->prepare("SELECT COUNT(*) AS total_records FROM reminders");
+$stmt_total_reminders->execute();
+$result_total_reminders = $stmt_total_reminders->get_result();
+$total_records_reminders = $result_total_reminders->fetch_assoc()['total_records'];
+$total_pages_reminders = ceil($total_records_reminders / $items_per_page_reminders);
 
 // Fetch paginated reminders
 $stmt_reminders = $connect->prepare("
@@ -281,13 +278,72 @@ $stmt_reminders = $connect->prepare("
     FROM reminders
     LIMIT ? OFFSET ?
 ");
-$stmt_reminders->bind_param("ii", $items_per_page, $offset);
+$stmt_reminders->bind_param("ii", $items_per_page_reminders, $offset_reminders);
 $stmt_reminders->execute();
 $result_reminders = $stmt_reminders->get_result();
 
 $reminders = [];
 while ($row = $result_reminders->fetch_assoc()) {
     $reminders[] = $row;
+}
+
+$items_per_page_overdue = 10; // Number of items per page
+$current_page_overdue = isset($_GET['page_overdue']) ? intval($_GET['page_overdue']) : 1;
+$offset_overdue = ($current_page_overdue - 1) * $items_per_page_overdue;
+
+// Get total overdue payments for pagination
+$currentDate = date('Y-m-d');
+$stmt_total_overdue = $connect->prepare("
+    SELECT COUNT(*) AS total_records
+    FROM deposit
+    WHERE due_date < ? AND status = 'pending'
+");
+$stmt_total_overdue->bind_param('s', $currentDate);
+$stmt_total_overdue->execute();
+$result_total_overdue = $stmt_total_overdue->get_result();
+$total_records_overdue = $result_total_overdue->fetch_assoc()['total_records'];
+$total_pages_overdue = ceil($total_records_overdue / $items_per_page_overdue);
+
+// Fetch paginated overdue payments
+$stmt_overdue_payments = $connect->prepare("
+    SELECT payment_id, student_id, total_amount, paid_amount, remaining_amount, due_date
+    FROM deposit
+    WHERE due_date < ? AND status = 'pending'
+    LIMIT ? OFFSET ?
+");
+$stmt_overdue_payments->bind_param('sii', $currentDate, $items_per_page_overdue, $offset_overdue);
+$stmt_overdue_payments->execute();
+$result_overdue_payments = $stmt_overdue_payments->get_result();
+
+$overduePayments = [];
+while ($row = $result_overdue_payments->fetch_assoc()) {
+    $overduePayments[] = $row;
+}
+
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
 }
 // Fetch user preferences
   
@@ -385,8 +441,8 @@ $connect->close();
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -666,9 +722,9 @@ $connect->close();
                             if ($reminder_row = $result->fetch_assoc()) {
                                 ?>
                                 <h1 class="mt-2 head-update">Edit Reminder</h1>
-                                <ol class="breadcrumb mb-4 small">
-                                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                    <li class="breadcrumb-item"><a href="notify.php">Reminder</a></li>
+                                <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;" >
+                                    <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                                    <li class="breadcrumb-item"><a href="notify.php"  style="color: #f8f9fa;">Reminder</a></li>
                                     <li class="breadcrumb-item active">Edit Reminder</li>
                                 </ol>
                                 <div class="row">
@@ -705,8 +761,8 @@ $connect->close();
                   }else{
                     ?>
                         <h2 class="mt-2 head-update">Reminders</h2>
-                        <ol class="breadcrumb mb-4 small">
-                            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                        <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                            <li class="breadcrumb-item"><a href="dashboard.php"style="color: #f8f9fa;">Dashboard</a></li>
                             <li class="breadcrumb-item active">Notifications</li>
                         </ol>
 
@@ -755,35 +811,34 @@ $connect->close();
 
                             <div class="card-body">
                                  <!-- Pagination Controls -->
-                                <nav aria-label="Page navigation">
-                                    <ul class="pagination">
-                                        <?php if ($current_page > 1): ?>
-                                            <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page - 1; ?>">Previous</a></li>
-                                        <?php else: ?>
-                                            <li class="page-item disabled"><span class="page-link">Previous</span></li>
-                                        <?php endif; ?>
+                                 <nav aria-label="Page navigation">
+    <ul class="pagination">
+        <?php if ($current_page_reminders > 1): ?>
+            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders - 1; ?>">Previous</a></li>
+        <?php else: ?>
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+        <?php endif; ?>
 
-                                        <?php for ($page = 1; $page <= $total_pages; $page++): ?>
-                                            <?php if ($page == $current_page): ?>
-                                                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
-                                            <?php else: ?>
-                                                <li class="page-item"><a class="page-link" href="?page=<?php echo $page; ?>"><?php echo $page; ?></a></li>
-                                            <?php endif; ?>
-                                        <?php endfor; ?>
+        <?php for ($page = 1; $page <= $total_pages_reminders; $page++): ?>
+            <?php if ($page == $current_page_reminders): ?>
+                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
+            <?php else: ?>
+                <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $page; ?>"><?php echo $page; ?></a></li>
+            <?php endif; ?>
+        <?php endfor; ?>
 
-                                        <?php if ($current_page < $total_pages): ?>
-                                            <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page + 1; ?>">Next</a></li>
-                                        <?php else: ?>
-                                            <li class="page-item disabled"><span class="page-link">Next</span></li>
-                                        <?php endif; ?>
-                                    </ul>
-                                </nav>
+        <?php if ($current_page_reminders < $total_pages_reminders): ?>
+            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders + 1; ?>">Next</a></li>
+        <?php else: ?>
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+        <?php endif; ?>
+    </ul>
+</nav>
                                 <div class="table-responsive">
                                     <table class="table table-bordered" id="reminderTable">
                                         <thead>
                                         <tr>
-                                            <th>Reminder ID</th>
-                                            <th>Payment ID</th>
+                                            <th>Reminder Id</th>
                                             <th>Reminder Type</th>
                                             <th>Sent At</th>
                                             <th>Action</th>
@@ -799,7 +854,6 @@ $connect->close();
 
                                             echo '<tr>';
                                             echo '<td>' . $reminder_id . '</td>';
-                                            echo '<td>' . $payment_id . '</td>';
                                             echo '<td>' . $reminder_type . '</td>';
                                             echo '<td>' . $sent_at . '</td>';
                                             echo '<td>
@@ -874,13 +928,37 @@ $connect->close();
                         <div class="card mt-5">
                             <div class="card-body">
                                 <h3>Overdue Payments</h3>
+                                <nav aria-label="Page navigation">
+    <ul class="pagination">
+        <?php if ($current_page_overdue > 1): ?>
+            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue - 1; ?>">Previous</a></li>
+        <?php else: ?>
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+        <?php endif; ?>
+
+        <?php for ($page = 1; $page <= $total_pages_overdue; $page++): ?>
+            <?php if ($page == $current_page_overdue): ?>
+                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
+            <?php else: ?>
+                <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $page; ?>"><?php echo $page; ?></a></li>
+            <?php endif; ?>
+        <?php endfor; ?>
+
+        <?php if ($current_page_overdue < $total_pages_overdue): ?>
+            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue + 1; ?>">Next</a></li>
+        <?php else: ?>
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+        <?php endif; ?>
+    </ul>
+</nav>
                                 <div class="table-responsive">
                                     <table class="table table-bordered" id="paymentsTable">
                                         <thead>
                                         <tr>
-                                            <th>Payment ID</th>
-                                            <th>Student ID</th>
+                                            <th>Student id</th>
                                             <th>Total Amount</th>
+                                            <th>paid Amount</th>
+                                            <th>Remaining Amount</th>
                                             <th>Due Date</th>
                                             <th>Action</th>
                                         </tr>
@@ -891,12 +969,15 @@ $connect->close();
                                             $payment_id = htmlspecialchars($payment['payment_id']);
                                             $student_id = htmlspecialchars($payment['student_id']);
                                             $total_amount = htmlspecialchars($payment['total_amount']);
+                                            $paid_amount = htmlspecialchars($payment['paid_amount']);
+                                            $remain_amount = htmlspecialchars($payment['remaining_amount']);
                                             $due_date = htmlspecialchars($payment['due_date']);
 
                                             echo '<tr>';
-                                            echo '<td>' . $payment_id . '</td>';
                                             echo '<td>' . $student_id . '</td>';
                                             echo '<td>' . $total_amount . '</td>';
+                                            echo '<td>' . $paid_amount . '</td>';
+                                            echo '<td>' . $remain_amount . '</td>';
                                             echo '<td>' . $due_date . '</td>';
                                             echo '<td>
                                                 <div class="btn-group" role="group" aria-label="Actions">
@@ -941,7 +1022,7 @@ $connect->close();
                   </div>
                   <footer class="main-footer px-3">
                           <div class="pull-right hidden-xs"> 
-                          Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                          <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p> 
                         </footer>
                   </main>
                   <?php 

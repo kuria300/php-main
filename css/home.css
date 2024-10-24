@@ -35,6 +35,9 @@
     text-align: center;
    
 }
+.purple {
+    color: purple; /* Or use any specific purple shade you like */
+}
 .text-over{
     position: absolute;
     top: 50%; 

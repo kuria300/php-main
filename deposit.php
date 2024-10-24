@@ -27,6 +27,7 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     // Determine role name based on the session
     $displayRole = $roleNames[$userRole] ?? "Parent";
 }
+
 if ($displayRole === 'Student') {
     $stmt = $connect->prepare("SELECT * FROM students WHERE student_id = ?");
     $stmt->bind_param("i", $userId);
@@ -42,10 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay_remain'])) {
     // Retrieve and sanitize input data
     $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
     $partial_amount = isset($_POST['partial_amount']) ? floatval($_POST['partial_amount']) : 0.0;
+    $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : '';
+    $payment_number = isset($_POST['mpesa_number']) ? $_POST['mpesa_number'] : '';
 
     // Validate inputs
     if ($payment_id <= 0 || $partial_amount <= 0) {
         $errors[] = "Invalid Payment ID or amount.";
+    }
+    if ($payment_method === 'cash') {
+        $payment_number ="Cash Payment";
+    }
+    if ($payment_method === 'mpesa' && empty($mpesa_number)) {
+        $errors[] = "M-Pesa number is required.";
+    }
+
+    if ($payment_method === 'credit_card') {
+       $payment_number ="Credit Card Payment";
     }
 
     // If there are validation errors, redirect with error messages
@@ -72,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay_remain'])) {
         if ($partial_amount > $current_remaining) {
             $errors[] = "Amount exceeds the remaining balance.";
         }
-
+    
         // If there are validation errors, redirect with error messages
         if (!empty($errors)) {
             $errorMessages = urlencode(implode('; ', $errors)); // Use semicolon to separate messages
@@ -90,8 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay_remain'])) {
 
         $new_status = ($new_remaining <= 0) ? 'paid' : 'pending';
 
-        $updateStmt = $connect->prepare("UPDATE deposit SET paid_amount = ?, remaining_amount = ?, status= ? WHERE payment_id = ?");
-        $updateStmt->bind_param('disi', $new_paid, $new_remaining,$new_status, $payment_id);
+        $updateStmt = $connect->prepare("UPDATE deposit SET paid_amount = ?, remaining_amount = ?, status= ?, payment_method = ?, payment_number = ? WHERE payment_id = ?");
+        $updateStmt->bind_param('disssi', $new_paid, $new_remaining,$new_status,$payment_method, $payment_number, $payment_id);
         $updateStmt->execute();
 
         if ($updateStmt->affected_rows > 0) {
@@ -115,20 +128,22 @@ $due_date = '';
 // Calculate the due date only when the form is being loaded
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
     $payment_date = date('Y-m-d H:i:s');
-    $due_date = date('Y-m-d', strtotime($payment_date . '- 2 days')); // Calculate the due date as  after the payment date
+    // Calculate the due date as 10 days after the payment date
+    $due_date = date('Y-m-d', strtotime($payment_date .' -10 days'));
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_payment'])) {
     include('DB_connect.php'); // Ensure this file initializes $connect
 
-    $student_id = $_SESSION['id']; // Assuming this is used somewhere else for filtering
+    $id = $_SESSION['id']; // Assuming this is used somewhere else for filtering
     
+    $student_id = intval($_POST['student_name']);
     $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : '';
     $total_amount = isset($_POST['total_amount']) ? floatval($_POST['total_amount']) : 0;
     $paid_amount = isset($_POST['paid_amount']) ? floatval($_POST['paid_amount']) : 0;
     $remaining_amount = isset($_POST['remaining_amount']) ? floatval($_POST['remaining_amount']) : 0;
     $status = ''; // Default to 'pending'
-    $payment_number = isset($_POST['student_contact_number1']) ? intval($_POST['student_contact_number1']) : 0; // For tracking payments
+
     $parent_id= isset($_POST['parent_id']);
     $payment_date = date('Y-m-d H:i:s');
 
@@ -166,7 +181,7 @@ FROM students s
 JOIN parents p ON s.parent_id = p.parent_id
 WHERE s.student_id = ?;";
 $parent_stmt = $connect->prepare($fetch_parent_query);
-$parent_stmt->bind_param('i', $student_id);
+$parent_stmt->bind_param('i', $id);
 $parent_stmt->execute();
 $parent_result = $parent_stmt->get_result();
 
@@ -204,28 +219,14 @@ $parent_stmt->close();
             echo '<p>M-Pesa payment failed.</p>';
             exit;
         }
-        $payment_number = $mpesa_number;
+        
 
     } else if ($payment_method === 'credit_card') {
-        $card_number = $_POST['card_number'];
-        $card_expiry = $_POST['card_expiry'];
-        $card_cvc = $_POST['card_cvc'];
-        if (empty($card_number) || empty($card_expiry) || empty($card_cvc)) {
-            echo '<p>Credit card details are required.</p>';
-            exit;
-        }
-
-        // Call credit card payment function
-        $result = processCreditCardPayment($card_number, $card_expiry, $card_cvc, $total_amount);
-        if (!$result) {
-            echo '<p>Credit card payment failed.</p>';
-            exit;
-        }
-        $payment_number = $card_number;
+       
+        $payment_number = 'Credit card Payment'; 
 
     } else if ($payment_method === 'cash') {
-        $cash_amount = $paid_amount;
-        if ($cash_amount <= 0) {
+        if ($paid_amount <= 0) {
             echo '<p>Cash amount must be greater than zero.</p>';
             exit;
         }
@@ -236,39 +237,35 @@ $parent_stmt->close();
         exit;
     }
 
-    $student_query = "SELECT parent_id FROM students WHERE student_id = ?";
+$student_query = "SELECT parent_id FROM students WHERE student_id = ?";
 $stmt = $connect->prepare($student_query);
-$stmt->bind_param('i',  $userId);
+$stmt->bind_param('i',  $id);
 $stmt->execute();
-$stmt->bind_result($parent_id);
+$stmt->bind_result($parents_id);
 $stmt->fetch();
 $stmt->close();
 
-$student_query = "SELECT student_id FROM students";
-$stmt = $connect->prepare($student_query);
+$fetch_parent_query = "SELECT parent_name FROM parents WHERE parent_id = ?";
+$parent_stmt = $connect->prepare($fetch_parent_query);
+$parent_stmt->bind_param('i', $id);
+$parent_stmt->execute();
+$parent_row = $parent_stmt->get_result()->fetch_assoc();
+$parent_name = $parent_row ? $parent_row['parent_name'] : '';
 
-// Execute the query
-$stmt->execute();
-
-// Bind result variables
-$stmt->bind_result($student_id);
-
-// Fetch results
-while ($stmt->fetch()) {
-    echo 'Student ID: ' . htmlspecialchars($student_id) . '<br>';
+if ($displayRole === 'Student' || $displayRole === 'Admin') {
+    $parentIdToBind = $parents_id; // Use the parent's ID fetched from the students table
+} else {
+    $parentIdToBind = $id; // Assuming $id is the student_id in this context
 }
 
-// Close statement and connection
-$stmt->close();
+
 
     // Insert payment details into the database
-    $query = "
-                INSERT INTO deposit (student_id, payment_number, due_date, total_amount, paid_amount, payment_method, status, payment_date, parent_id, parent_name, remaining_amount)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
-            ";
+    $query = " INSERT INTO deposit (student_id, payment_number, due_date, total_amount, paid_amount, payment_method, status, payment_date, parent_id, parent_name, remaining_amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
 
             if ($stmt = $connect->prepare($query)) {
-                $stmt->bind_param("isssssssss", $student_id, $payment_number, $due_date, $total_amount, $paid_amount, $payment_method, $status, $parent_id, $parent_name, $remaining_amount);
+                $stmt->bind_param("isssssssss", $student_id, $payment_number, $due_date, $total_amount, $paid_amount, $payment_method, $status, $parentIdToBind, $parent_name, $remaining_amount);
 
                 if ($stmt->execute()) {
                     // Redirect to the same page with a success message
@@ -285,6 +282,23 @@ $stmt->close();
     }
 
 }
+
+$admin_query = "SELECT admin_name, admin_email FROM admin_users WHERE admin_id = ?"; // Use the appropriate admin_id
+$admin_stmt = $connect->prepare($admin_query);
+
+$admin_stmt->bind_param('i', $userId);
+$admin_stmt->execute();
+$admin_result = $admin_stmt->get_result();
+
+if ($admin_row = $admin_result->fetch_assoc()) {
+    $admin_name = $admin_row['admin_name'];
+    $admin_email = $admin_row['admin_email'];
+} else {
+    $admin_name = 'Default Admin'; // Fallback if no admin found
+    $admin_email = 'admin@example.com'; // Fallback email
+}
+
+$admin_stmt->close();
 
 
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/PHPMailer.php');
@@ -312,24 +326,29 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
     // Fetch payment details
     $stmt = $connect->prepare("
         SELECT 
-            deposit.payment_id, 
-            students.student_name, 
-            students.student_email,
-            deposit.total_amount, 
-            deposit.paid_amount, 
-            deposit.payment_method, 
-            students.student_contact_number1 AS payment_number, 
-            deposit.status, 
-            deposit.payment_date
-        FROM deposit
-        JOIN students ON deposit.student_id = students.student_id
-        WHERE deposit.payment_id = ?
+        deposit.payment_id, 
+        students.student_name, 
+        students.student_email,
+        deposit.total_amount, 
+        deposit.paid_amount, 
+        deposit.payment_method, 
+        deposit.payment_number, 
+        deposit.status, 
+        deposit.payment_date,
+        parents.parent_name, 
+        parents.parent_email
+    FROM deposit
+    JOIN students ON deposit.student_id = students.student_id
+    LEFT JOIN parents ON students.parent_id = parents.parent_id
+    WHERE deposit.payment_id = ?
     ");
     
     $stmt->bind_param('i', $payment_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $payment = $result->fetch_assoc();
+
+
 
     if ($payment) {
         // Create PDF
@@ -425,6 +444,23 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
             $pdf->Cell(37, 10, htmlspecialchars($paymentHistory['payment_number']), 1);
             $pdf->Ln();
         }
+        $schoolEmail = '';
+        $emailStmt = $connect->prepare("SELECT school_email_address FROM settings");
+        if ($emailStmt) {
+            $emailStmt->execute();
+            $emailResult = $emailStmt->get_result();
+            
+            if ($emailRow = $emailResult->fetch_assoc()) {
+                $schoolEmail = htmlspecialchars($emailRow['school_email_address']); // Safely escape the email
+            }
+            $emailStmt->close();
+        }
+        $pdf->Ln(30); // Add some space before the footer
+        $pdf->SetFont('helvetica', 'I', 8);
+        $pdf->Cell(0, 5, 'Thank you for your payment!', 0, 1, 'C');
+        $pdf->Cell(0, 5, 'For any inquiries, contact us at ' . $schoolEmail, 0, 1, 'C');
+        $pdf->Cell(0, 5, 'Page ' . $pdf->getAliasNumPage() . ' of ' . $pdf->getAliasNbPages(), 0, 0, 'C');
+    
 
         $paymentStmt->close();
 
@@ -443,8 +479,22 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
 
-            $mail->setFrom($payment['student_email'], $payment['student_name']);
-            $mail->addAddress($payment['student_email']);
+            if ($displayRole === 'Parent') {
+                // Parent receives the email from the student
+                $mail->setFrom($payment['parent_email'], $payment['parent_name']);
+                $mail->addAddress($payment['parent_email'], $payment['parent_name']); // Send to parent
+            } else if ($displayRole === 'Student') {
+                // Student receives their own email
+                $mail->setFrom($payment['student_email'], $payment['student_name']);
+                $mail->addAddress($payment['student_email'], $payment['student_name']); // Send to student
+            }else if ($displayRole === 'Admin') {
+                // Student receives their own email
+                $mail->setFrom($admin_email, $admin_name);
+                $mail->addAddress($payment['student_email'], $payment['student_name']); // Send to student
+                if (!empty($payment['parent_email'])) {
+                    $mail->addAddress($payment['parent_email'], $payment['parent_name']); // Send to parent
+                }
+            }
 
             $mail->isHTML(true);
             $mail->Subject = 'Your Payment Receipt';
@@ -453,8 +503,16 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
 
             $mail->send();
             $message = 'Receipt has been sent to ' . htmlspecialchars($email);
+            if (@$mail->send()) {
+                header('Location: deposit.php?msg=send');
+                exit(); // Ensure no further code is executed after the redirect
+            } else {
+                // Optionally log the error without displaying it
+                file_put_contents('email_errors.log', date('Y-m-d H:i:s') . ' - ' . $mail->ErrorInfo . PHP_EOL, FILE_APPEND);
+            }
         } catch (Exception $e) {
-            $error = 'Message could not be sent. Mailer Error: ' . $mail->ErrorInfo;
+            file_put_contents('email_errors.log', date('Y-m-d H:i:s') . ' - ' . $mail->ErrorInfo . PHP_EOL, FILE_APPEND);
+        
         }
     } else {
         $error = 'Payment not found.';
@@ -464,35 +522,37 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
    
 } 
 
+
 // Example function to call M-Pesa API
 function callMpesaApi($mpesa_number, $total_amount) {
-    $url = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
+    $url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
     $access_token = getAccessToken();
 
-    if (empty($access_token)) {
-        throw new Exception("Failed to get access token");
-    }
-
-    $shortcode = "174379";  // Replace with your shortcode
+    $shortcode = 174379;  // Replace with your shortcode
     $lipa_na_mpesa_online_shortcode_key = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
     $password = base64_encode($shortcode . $lipa_na_mpesa_online_shortcode_key . date('YmdHis'));
+    
+
+    /*"Amount" => $total_amount, // Change this to the desired amount
+        "PartyA" => $mpesa_number, // Use the provided M-Pesa number
+        "PartyB" => $shortcode,
+        "PhoneNumber" => $mpesa_number, // Use the provided M-Pesa number*/
 
     $data = [
         "BusinessShortCode" => $shortcode,
         "Password" => $password,
         "Timestamp" => date('YmdHis'),
         "TransactionType" => "CustomerPayBillOnline",
-        "Amount" => $paid_amount,
-        "PartyA" => $mpesa_number,
-        "PartyB" => $shortcode,
-        "PhoneNumber" => $mpesa_number,
-        "CallBackURL" => "https://yourdomain.com/callback.php",
-        "AccountReference" => "Test123",
-        "TransactionDesc" => "Payment for invoice"
+        "Amount" => 1, // Change this to the desired amount$paid_amount
+        "PartyA"=> 254768863372,//$mpesa_number
+        "PartyB"=> 174379,
+        "PhoneNumber"=> 254768863372,   //"PhoneNumber" => $mpesa_number,
+        "CallBackURL" => "https://d9a6-102-0-5-84.ngrok-free.app/sms/daraja.php",
+        "AccountReference" => "AutoReceipt",
+        "TransactionDesc" => "Payment for Fees"
     ];
 
-
-    $ch = curl_init('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest');
+    $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, 1);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
@@ -501,26 +561,29 @@ function callMpesaApi($mpesa_number, $total_amount) {
         'Content-Type: application/json'
     ]);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    
     $response = curl_exec($ch);
 
-    if (curl_errno($ch)) {
-        throw new Exception('Curl error: ' . curl_error($ch));
-    }
-
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    
 
-    if ($http_code != 200) {
-        throw new Exception("HTTP error code: $http_code");
-    }
-
+    // Decode the response
     $response_data = json_decode($response, true);
-
+    
+    // Check for JSON decode errors
     if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception("JSON decode error: " . json_last_error_msg());
+        echo "JSON decode error: " . json_last_error_msg() . "\n";
+        return false;
     }
 
-    return isset($response_data['ResponseCode']) && $response_data['ResponseCode'] == '0';
+    // Check the response code
+    if (isset($response_data['ResponseCode']) && $response_data['ResponseCode'] == '0') {
+        return true; // Payment was successful
+    } else {
+        echo "Error: " . ($response_data['errorMessage'] ?? 'Unknown error') . "\n";
+        return false; // Payment failed
+    }
+    curl_close($ch);
 }
 
 function processCreditCardPayment($number, $expiry, $cvc, $amount) {
@@ -530,40 +593,85 @@ function processCreditCardPayment($number, $expiry, $cvc, $amount) {
 }
 
 function getAccessToken() {
-    $consumer_key = '0z7rdMIKWdBkNstnnHRG8hpO5UY3G5vGLL3clT4TTYqtuyT9';
-    $consumer_secret = 'ttbZhgbMvoNb2So6ic4Akis6tdBVAuopnQ8T97Z57tPFhmw79AFnw2fiu1Ejlvtd';
+    $consumer_key = ' Rm1drpxRb854CYa2YKqY4GjIvZ6ki2ltUYGgR3K4zWswBycK';
+    $consumer_secret = 'kEjI9s29S43LS6KG0URrkJo6Pb9iCvdlVxA8Wc8ln5Qp0E1MxPAs7KYfl6NxgX9c';
     $credentials = base64_encode($consumer_key . ':' . $consumer_secret);
     $url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
     $headers = [
         'Authorization: Basic ' . $credentials,
-        'Content-Type: application/x-www-form-urlencoded'
+        'Content-Type: application/json; charset=utf8'
     ];
 
-    $ch = curl_init('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest');
+    $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch, CURLOPT_HEADER, FALSE);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_USERPWD, $consumer_key . ':' . $consumer_secret);
     $response = curl_exec($ch);
-
-    if (curl_errno($ch)) {
-        throw new Exception('Curl error: ' . curl_error($ch));
-    }
-
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($http_code != 200) {
-        throw new Exception("HTTP error code: $http_code");
-    }
-
     $response_data = json_decode($response, true);
 
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception("JSON decode error: " . json_last_error_msg());
+    return isset($response_data['access_token']) ? $response_data['access_token'] : '';
+
+    curl_close($ch);
+}
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_payment'])) {
+   
+    // Retrieve and sanitize inputs
+    $payment_id = isset($_POST['id']) ? intval($_POST['id']) : 0;
+    $total_amount = isset($_POST['total_amount']) ? floatval($_POST['total_amount']) : 0;
+    $paid_amount = isset($_POST['paid_amount']) ? floatval($_POST['paid_amount']) : 0;
+    $remaining_amount = isset($_POST['remaining_amount']) ? floatval($_POST['remaining_amount']) : 0;
+    $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : '';
+    $status = isset($_POST['status']) ? $_POST['status'] : '';
+
+    // Basic validation
+    $errors = [];
+    if ($total_amount <= 0) {
+        $errors[] = 'Total amount must be greater than zero.';
     }
 
-    return isset($response_data['access_token']) ? $response_data['access_token'] : '';
+    if ($paid_amount < 0) {
+        $errors[] = 'Paid amount cannot be negative.';
+    }
+
+    if ($paid_amount > $total_amount) {
+        $errors[] = 'Paid amount cannot be greater than the total amount.';
+    }
+
+    if (!empty($errors)) {
+        // Handle errors
+        $errorMessages = urlencode(implode('; ', $errors));
+        header('Location: deposit.php?msg=error&errors=' . $errorMessages);
+        exit();
+    } else {
+        // Prepare SQL UPDATE statement
+        $query = "
+            UPDATE deposit 
+            SET total_amount = ?, paid_amount = ?, remaining_amount = ?, payment_method = ?, status = ?
+            WHERE payment_id = ?
+        ";
+
+        if ($stmt = $connect->prepare($query)) {
+            // Bind parameters
+            $stmt->bind_param("ddsssi", $total_amount, $paid_amount, $remaining_amount, $payment_method, $status, $payment_id);
+
+            if ($stmt->execute()) {
+                // Redirect to the same page with a success message
+                header('Location: deposit.php?msg=update');
+                exit();
+            } else {
+                echo "Error: " . $stmt->error;
+            }
+
+            // Close the statement
+            $stmt->close();
+        } else {
+            echo "Error preparing statement: " . $connect->error;
+        }
+    }
 }
 
 // Fetch user preferences
@@ -637,6 +745,56 @@ $courses[] = $row;
     }
 
 }
+$sql = "SELECT p.*, s.student_name FROM deposit p
+        JOIN students s ON p.student_id = s.student_id";
+$result = $connect->query($sql);
+
+// Handle search functionality if a query is provided
+$searchQuery = '';
+if (isset($_GET['query'])) {
+    $searchQuery = $_GET['query'];
+
+    $sql = "SELECT p.*, s.student_name FROM deposit p
+            JOIN students s ON p.student_id = s.student_id
+            WHERE 
+                p.payment_number LIKE ? OR 
+                p.parent_name LIKE ? OR 
+                p.payment_method LIKE ? OR 
+                p.status LIKE ? OR 
+                p.payment_date LIKE ? OR 
+                p.due_date LIKE ?";
+
+    $stmt = $connect->prepare($sql);
+    $likeQuery = "%" . $searchQuery . "%";
+    $stmt->bind_param("ssssss", $likeQuery, $likeQuery, $likeQuery, $likeQuery, $likeQuery, $likeQuery);
+    $stmt->execute();
+    $result = $stmt->get_result();
+}
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['delete_deposit'])) {
     // Retrieve the payment ID from POST data
     $payment_id = isset($_POST['payment_id']) ? $_POST['payment_id'] : '';
@@ -708,8 +866,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -918,9 +1076,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
         <!--sidetag end-->
         
         <!--main-->
-        <?php if ($displayRole === 'Student' || $displayRole === 'Parent'): ?>
-        <main class="main-container">
-
+        <?php if ($displayRole === 'Parent'): ?>
+            <main class="main-container">
         <?php 
         if (isset($_GET['action'])) {
             if ($_GET['action'] == 'add') {
@@ -971,9 +1128,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
                 if (isset($_GET['id'])) {
                     ?>
                     <h1 class="mt-2 head-update">Payments and Invoices</h1>
-                    <ol class="breadcrumb mb-4 small">
-                        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                        <li class="breadcrumb-item"><a href="payment.php">Payment and Invoices</a></li>
+                    <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                        <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="payment.php"  style="color: #f8f9fa;">Payment and Invoices</a></li>
                         <li class="breadcrumb-item active">Edit Invoice</li>
                     </ol>
                     <div class="row">
@@ -1013,21 +1170,21 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
         } else {
             ?>
             <h1 class="mt-2 head-update">Payments and Invoices</h1>
-            <ol class="breadcrumb mb-4 small">
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
                 <li class="breadcrumb-item active">Payment and Invoices</li>
             </ol>
             <?php
             if (isset($_GET['msg'])) {
                 if ($_GET['msg'] == 'add') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle"></i>Fees Successfully paid
+                        <i class="bi bi-check-circle"></i> Fees Successfully paid
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
                 if ($_GET['msg'] == 'success') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <i class="bi bi-check-circle"></i>Payment processed successfully
+                    <i class="bi bi-check-circle"></i> Payment processed successfully
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>';
                 }
@@ -1041,13 +1198,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
                 } 
                 if ($_GET['msg'] == 'delete') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle"></i>Payment deleted successfully!
+                        <i class="bi bi-check-circle"></i> Payment deleted successfully!
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
                 if ($_GET['msg'] == 'partial') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle"></i>Partial payment was successful
+                        <i class="bi bi-check-circle"></i> Partial payment was successful
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'update') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> payment was Updated successfully
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
@@ -1071,312 +1234,37 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
                         </div>
                         <!-- Modal -->
                         <?php
-include('DB_connect.php');
+                        include('DB_connect.php');
 
-$student_query = "SELECT parent_id FROM students WHERE student_id = ?";
-$stmt = $connect->prepare($student_query);
-$stmt->bind_param('i',  $userId);
-$stmt->execute();
-$stmt->bind_result($parent_id);
-$stmt->fetch();
-$stmt->close();
-
-// Fetch student data
-$studentId = $_SESSION['id']; // Replace with the actual student ID you want to query
-$query = "
-    SELECT 
-        s.student_number, 
-        d.total_amount, 
-        d.paid_amount, 
-        d.due_date 
-    FROM 
-        students s
-    INNER JOIN 
-        deposit d 
-    ON 
-        s.student_id = d.student_id 
-    WHERE 
-        s.student_id = ?
-";
-
-$stmt = $connect->prepare($query);
-$stmt->bind_param('i', $studentId);
-$stmt->execute();
-$result = $stmt->get_result();
-$studentData = $result->fetch_assoc();
-
-$studentNumber = $studentData['student_number'];
-$totalAmount = $studentData['total_amount'];
-$paidAmount = $studentData['paid_amount'];
-$dueDate = $studentData['due_date'];
-$remainingAmount = $totalAmount - $paidAmount;
-
-// Generate QR Code URL with fetched data
-$qrCodeText = "http://localhost:8080/deposit.php?student_id={$studentId}&total_amount={$totalAmount}&paid_amount={$paidAmount}&remaining_amount={$remainingAmount}&due_date={$dueDate}";
-$qrCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=" . urlencode($qrCodeText);
-
-?>
+                        $student_query = "SELECT parent_id FROM students WHERE student_id = ?";
+                        $stmt = $connect->prepare($student_query);
+                        $stmt->bind_param('i', $userId);
+                        $stmt->execute();
+                        $stmt->bind_result($parent_id);
+                        $stmt->fetch();
+                        $stmt->close();
+                        ?>
 
                         <div class="modal fade" id="payFeesModal" tabindex="-1" aria-labelledby="payFeesModalLabel" aria-hidden="true">
                             <div class="modal-dialog modal-lg">
                                 <div class="modal-content">
                                     <div class="modal-header">
-                                        <h5 class="modal-title" id="payFeesModalLabel">Make Payment</h5>
+                                        <h5 class="modal-title" id="payFeesModalLabel">Choose Payment Method</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                     </div>
                                     <div class="modal-body">
                                     <div class="mb-3">
-                    <label class="form-label">Scan QR Code to Auto-fill Form</label>
-                    <img src="<?php echo $qrCodeUrl; ?>" alt="QR Code">
                                         <!-- Form to add fees -->
                                         <form action="deposit.php" method="post">
-                                        <div class="mb-3">
-                                                    <label for="studentSelect" class="form-label">Select Student</label>
-                                                    <select id="studentSelect" class="form-select" name="student_name" required>
-                                                    <?php
-                                                     include('DB_connect.php');
-                                                     
-// Check if session and database connection are valid
-if (isset($_SESSION['id']) && $connect instanceof mysqli) {
-    $loggedInUser = $_SESSION['id']; // Get the logged-in user's ID
-
-    // Determine the role and prepare the query accordingly
-    if ($displayRole === 'Parent') {
-        $query = "
-            SELECT students.student_id, students.student_name 
-            FROM students
-            WHERE students.parent_id = ?
-            ORDER BY students.student_name
-        ";
-    } elseif ($displayRole === 'Student') {
-        // Fetching a specific student
-        $query = "
-            SELECT students.student_id, students.student_name 
-            FROM students
-            WHERE students.student_id = ?
-            ORDER BY students.student_name
-        ";
-    } else {
-        echo '<option value="">Invalid role</option>';
-        exit;
-    }
-
-    // Prepare and execute the query
-    $studentStmt = $connect->prepare($query);
-    if ($studentStmt) {
-        // Bind parameters based on the role
-        $studentStmt->bind_param('i', $loggedInUser); // Bind the logged-in user's ID
-        $studentStmt->execute();
-        $studentResult = $studentStmt->get_result();
-
-        if ($studentResult->num_rows > 0) {
-            while ($studentRow = $studentResult->fetch_assoc()) {
-                // Output each student as an option in the dropdown
-                echo '<option value="' . htmlspecialchars($studentRow['student_id']) . '">' 
-                . htmlspecialchars($studentRow['student_name']) . '</option>';
-            }
-        } else {
-            // If no students are found, display a placeholder option
-            echo '<option value="">No students found</option>';
-        }
-        $studentStmt->close();
-    } else {
-        // Display an error if the statement could not be prepared
-        echo '<option value="">Error preparing the query</option>';
-    }
-} else {
-    // Display an error if the database connection is not valid or session is not set
-    echo '<option value="">Database connection error or session not valid</option>';
-}
-
-// Close the database connection
-
-?>
-                                                    </select>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label for="studentSelect" class="form-label">Admission Number</label>
-                                                    <select id="studentSelect" class="form-select" name="student_number" required>
-                                                    <?php
-include('DB_connect.php');
-
-// Check if session and database connection are valid
-if (isset($_SESSION['id']) && $connect instanceof mysqli) {
-    $loggedInUserId = $_SESSION['id']; // Get the logged-in user's ID
-
-    // Determine the role and prepare the query accordingly
-    if ($displayRole === 'Parent') {
-        // Parent: Fetch all students related to this parent
-        $query = "
-            SELECT students.student_id, students.student_number 
-            FROM students
-            WHERE students.parent_id = ?
-            ORDER BY students.student_number
-        ";
-    } elseif ($displayRole === 'Student') {
-        // Student: Fetch the logged-in student's details
-        $query = "
-            SELECT students.student_id, students.student_number 
-            FROM students
-            WHERE students.student_id = ?
-            ORDER BY students.student_number
-        ";
-    } else {
-        echo '<option value="">Invalid role</option>';
-        exit;
-    }
-
-    // Prepare and execute the query
-    $studentStmt = $connect->prepare($query);
-    if ($studentStmt) {
-        // Bind parameters based on the role
-        $studentStmt->bind_param('i', $loggedInUserId); // Bind the logged-in user's ID
-        $studentStmt->execute();
-        $studentResult = $studentStmt->get_result();
-
-        if ($studentResult->num_rows > 0) {
-            while ($studentRow = $studentResult->fetch_assoc()) {
-                // Output each student as an option in the dropdown
-                echo '<option value="' . htmlspecialchars($studentRow['student_id']) . '"';
-                if ($displayRole === 'Student' && $studentRow['student_id'] == $loggedInUserId) {
-                    echo ' selected'; // Mark the current student as selected
-                }
-                echo '>' . htmlspecialchars($studentRow['student_number']) . '</option>';
-            }
-        } else {
-            // If no students are found, display a placeholder option
-            echo '<option value="">No students found</option>';
-        }
-
-        $studentStmt->close();
-    } else {
-        // Display an error if the statement could not be prepared
-        echo '<option value="">Error preparing the query</option>';
-    }
-} else {
-    // Display an error if the database connection is not valid or session is not set
-    echo '<option value="">Database connection error or session not valid</option>';
-}
-
-// Close the database connection
-$connect->close();
-?>
-                                                    </select>
-                                                </div>
-                                                <div class="mb-3">
-                        <label for="parentSelect" class="form-label">Select Parent</label>
-                        <select id="parentSelect" class="form-select" name="parent_id" required>
-                        <?php
-                       include('DB_connect.php');
-
-                       // Ensure $parent_id is correctly set and valid
-                       $parent_id = intval($parent_id); // Cast to integer if $parent_id should be an integer
-                       
-                       // Debugging: Print the parent_id to verify it's being set correctly
-                        echo 'Parent ID: ' . $parent_id;
-                       
-                       // Prepare the query to fetch parent details
-                       $parent_query = "SELECT parent_id, parent_name FROM parents WHERE parent_id = ? ORDER BY parent_name";
-                       $stmt = $connect->prepare($parent_query);
-                       
-                       // Check if the statement was prepared correctly
-                       if ($stmt) {
-                           $stmt->bind_param('i', $parent_id);
-                           $stmt->execute();
-                           $parent_result = $stmt->get_result();
-                       
-                           if ($parent_result->num_rows > 0) {
-                               while ($parentRow = $parent_result->fetch_assoc()) {
-                                   echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '"';
-                                   if ($parentRow['parent_id'] == $parent_id) {
-                                       echo ' selected'; // Mark the current parent as selected
-                                   }
-                                   echo '>' . htmlspecialchars($parentRow['parent_name']) . '</option>';
-                               }
-                           } else {
-                               echo '<option value="">No parents found</option>';
-                           }
-                       
-                           $stmt->close();
-                       } 
-                      
-                ?>
-                        </select>
-                    </div>     
-                    <div class="mb-3">
-    <label for="courseSelect" class="form-label">Select Course:</label>
-    <select class="form-select" id="courseSelect" name="course_id">
-        <?php foreach ($courses as $course): ?>
-            <option value="<?php echo htmlspecialchars($course['course_id']); ?>" data-fee="<?php echo htmlspecialchars($course['course_fee']); ?>">
-                <?php echo htmlspecialchars($course['course_name']); ?> - Ksh.<?php echo htmlspecialchars($course['course_fee']); ?>
-            </option>
-        <?php endforeach; ?>
-    </select>
-</div>
-
-<div class="mb-3">
-    <label for="totalAmount" class="form-label">Payable amount:</label>
-    <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" value="<?php echo htmlspecialchars($courses[0]['course_fee'] ?? ''); ?>" required readonly>
-</div>
-                                            <div class="mb-3">
-                                                <label for="paidAmount" class="form-label">Paid Amount</label>
-                                                <input type="number" class="form-control" id="paidAmount" name="paid_amount"  min="50" required >
-                                            </div>
-                                            <div class="mb-3">
-        <label for="remainingAmount" class="form-label">Remaining Amount</label>
-        <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" readonly>
-    </div>
-                                            <div class="mb-3">
-                                                <label for="dueDate" class="form-label">Due Date</label>
-                                                <input type="text" class="form-control" id="dueDate" name="due_date" value="<?php echo htmlspecialchars($due_date); ?>" readonly>
-                                            </div>
                                             <label for="payment_method">Payment Method:</label>
-                                                <select id="payment_method" name="payment_method" required>
+                                                <select id="payment_method" name="payment_method" onchange="togglePaymentFields()">
+                                                <option value="cash" class="text-muted">Choose Payment</option>
                                                     <option value="cash">Cash</option>
                                                     <option value="mpesa">M-Pesa</option>
                                                     <option value="credit_card">Credit Card</option>
                                                 </select><br><br>
-                                            <label for="status" class="form-label">Status</label>
-                                            <div class="custom-select-wrapper">
-                                                <div class="custom-select">
-                                                    <div class="selected">Select Status</div>
-                                                    <div class="dropdown-menu">
-                                                        <div class="dropdown-item btn-danger" data-value="Unpaid">Unpaid</div>
-                                                        <div class="dropdown-item btn-warning" data-value="Pending">Pending</div>
-                                                        <div class="dropdown-item btn-success" data-value="Paid">Paid</div>
-                                                    </div>
-                                                    <select id="status" name="status" disabled>
-                                                        <option value="Unpaid">Unpaid</option>
-                                                        <option value="Pending">Pending</option>
-                                                        <option value="Paid">Paid</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div id="mpesaFields" style="display: none;">
-                                            <div class="mb-3">
-                                                <label for="mpesaNumber" class="form-label">M-Pesa Number</label>
-                                                 <input type="text" id="mpesaNumber" class="form-control" name="mpesa_number">
-                                            </div>
-                                            </div>
-
-                                         <div id="creditCardFields" style="display: none;">
-                                               <div class="mb-3">
-                                                    <label for="cardNumber" class="form-label">Card Number</label>
-                                                    <input type="text" id="cardNumber" class="form-control" name="card_number">
-                                           </div>
-                                           <div class="mb-3">
-                                                     <label for="cardExpiry" class="form-label">Card Expiry Date</label>
-                                                    <input type="text" id="cardExpiry" class="form-control" name="card_expiry">
-                                             </div>
-                                            <div class="mb-3">
-                                                     <label for="cardCvc" class="form-label">Card CVC</label>
-                                                     <input type="text" id="cardCvc" class="form-control" name="card_cvc">
-                                             </div>
-                                         </div>
                                             <div class="modal-footer">
-                                            <button type="submit" class="btn btn-success me-2" name="submit_payment">Submit Payment</button>
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                        
+                                               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                             </div>
                                             
                                         </form>
@@ -1450,6 +1338,435 @@ $connect->close();
             // Check if student_id is set in the session
             if (isset($_SESSION['id'])) {
                 $student_id = $_SESSION['id'];
+                $items_per_page = 5; // Number of items per page
+                $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+                $offset = ($current_page - 1) * $items_per_page;
+
+                if ($connect instanceof mysqli) {
+                   
+                        $stmt = $connect->prepare("
+                            SELECT 
+                                deposit.payment_id AS payment_id,
+                                students.student_name AS student_name,
+                                deposit.total_amount, 
+                                deposit.paid_amount, 
+                                deposit.remaining_amount,
+                                deposit.payment_method,
+                               deposit.payment_number,
+                                deposit.status,
+                                deposit.payment_date,
+                                deposit.due_date
+                            FROM 
+                                deposit
+                            JOIN 
+                                students ON deposit.student_id = students.student_id
+                            WHERE 
+                                students.parent_id = ?
+                            LIMIT ? OFFSET ?
+                        ");
+                        $stmt->bind_param("iii", $student_id, $items_per_page, $offset);
+
+                    if ($stmt) {
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+
+
+                        if ($result->num_rows > 0) {
+                            echo '<table class="table table-bordered" id="payTable">';
+                            echo '<thead><tr><th>Student Name</th><th>Payment Date</th><th>Due Date</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Payment Method</th><th>Payment Number</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+                            while ($row = $result->fetch_assoc()) {
+                                
+                                echo '<tr>';
+                               
+                                echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['due_date']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['total_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['paid_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['remaining_amount']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['payment_number']) . '</td>';
+                                echo '<td>' . htmlspecialchars($row['status']) . '</td>';
+                                echo '<td>
+                                    <div class="btn-group" role="group" aria-label="Actions">
+                                        <button type="button" class="btn btn-success btn-sm me-3 btn-custom-radius" data-bs-target="#viewReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">
+                                             Invoice
+                                        </button>
+                                         <a href="download_receipt.php?payment_id=' . htmlspecialchars($row['payment_id']) .'" class="btn btn-primary btn-sm me-3 btn-custom-radius" target="_blank">
+                                            Download Receipt
+                                        </a>
+                                         <button type="button" class="btn btn-success btn-sm btn-custom-radius" data-bs-toggle="modal" data-bs-target="#emailReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">
+                                            Email Receipt
+                                        </button>
+                                         <button type="button" class="btn btn-warning btn-sm ms-3 btn-custom-radius" data-bs-toggle="modal" data-bs-target="#partialPaymentModal" data-id="' . htmlspecialchars($row['payment_id']) . '">
+                                            Pay Remaining
+                                        </button>
+                                    </div>
+                                </td>';
+                                echo '</tr>';
+                            }
+                            echo '</tbody></table>';
+
+                            // Get total number of records
+                            $stmt_total = $connect->prepare("
+                             SELECT COUNT(*) AS total_records 
+                    FROM deposit 
+                    JOIN students ON deposit.student_id = students.student_id
+                    WHERE students.parent_id = ?
+                            ");
+                            if ($stmt_total) {
+                                $stmt_total->bind_param("i", $student_id);
+                                $stmt_total->execute();
+                                $result_total = $stmt_total->get_result();
+                                $total_records = $result_total->fetch_assoc()['total_records'];
+                                $total_pages = ceil($total_records / $items_per_page);
+
+                                echo '<nav aria-label="Page navigation"><ul class="pagination">';
+                                
+                                // Previous button
+                                if ($current_page > 1) {
+                                    echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page - 1) . '">Previous</a></li>';
+                                } else {
+                                    echo '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
+                                }
+                                
+                                // Page numbers
+                                for ($page = 1; $page <= $total_pages; $page++) {
+                                    if ($page == $current_page) {
+                                        echo '<li class="page-item active"><span class="page-link">' . $page . '</span></li>';
+                                    } else {
+                                        echo '<li class="page-item"><a class="page-link" href="?page=' . $page . '">' . $page . '</a></li>';
+                                    }
+                                }
+                                
+                                // Next button
+                                if ($current_page < $total_pages) {
+                                    echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page + 1) . '">Next</a></li>';
+                                } else {
+                                    echo '<li class="page-item disabled"><span class="page-link">Next</span></li>';
+                                }
+                                
+                                echo '</ul></nav>';
+                            } else {
+                                echo '<p>Failed to get total number of records.</p>';
+                            }
+                        } else {
+                            echo '<p>No invoices found.</p>';
+                        }
+                        $stmt->close();
+                    } else {
+                        echo '<p>Failed to prepare SQL statement for invoices.</p>';
+                    }
+                } else {
+                    echo '<p>Database connection is not valid.</p>';
+                }
+
+                $connect->close();
+            } else {
+                echo '<p>Student ID not found in session.</p>';
+            }
+            ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <footer class="main-footer px-3">
+                            <div class="pull-right hidden-xs"> 
+                            <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
+                            </div>
+                        </footer>
+            </div>
+        </main>
+        <?php
+        }
+        ?>
+        <!--main-->
+    </div>
+    <?php endif; ?>
+
+        <?php if ($displayRole === 'Student'): ?>
+        <main class="main-container">
+
+        <?php 
+        if (isset($_GET['action'])) {
+            if ($_GET['action'] == 'add') {
+                ?>
+                <h1 class="mt-2 head-update">Payments and Invoices</h1>
+                <ol class="breadcrumb mb-4 small">
+                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                    <li class="breadcrumb-item active"><a href="payment.php">Payments and Invoices</a></li>
+                    <li class="breadcrumb-item active">Add fees</li>
+                </ol>
+                <div class="row">
+                    <div class="col-md-12">
+                        <?php
+                        if (!empty($error)) {
+                            // Convert the error array to a string
+                            $errorMessages = '<ul class="list-unstyled">';
+                            foreach ($error as $err) {
+                                $errorMessages .= '<li>' . htmlspecialchars($err) . '</li>';
+                            }
+                            $errorMessages .= '</ul>';
+                        
+                            // Display the alert with error messages
+                            echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">'
+                               . $errorMessages .
+                               '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>'
+                               . '</div>';
+                        }
+                        ?>
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <span class="material-symbols-outlined text-bold">manage_accounts</span> Add New Fees
+                            </div>
+                            <div class="card-body">
+                            
+                             
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <footer class="main-footer px-3">
+                    <div class="pull-right hidden-xs"> 
+                        Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                    </div>
+                </footer>
+                <?php
+            } else if ($_GET['action'] == 'edit') {
+                if (isset($_GET['id'])) {
+                    ?>
+                    <h1 class="mt-2 head-update">Payments and Invoices</h1>
+                    <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                        <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="payment.php"  style="color: #f8f9fa;">Payment and Invoices</a></li>
+                        <li class="breadcrumb-item active">Edit Invoice</li>
+                    </ol>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                <?php if (isset($errors) && !empty($errors)): ?>
+                                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                        <?php foreach ($errors as $error): ?>
+                                            <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?><br>
+                                        <?php endforeach; ?>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if (isset($message) && !empty($message) && empty($errors)): ?>
+                                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                     <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                                <?php endif; ?>
+                                    <span class="material-symbols-outlined">manage_accounts</span>Student Edit Form
+                                </div>
+                                <div class="card-body">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <footer class="main-footer px-3">
+                            <div class="pull-right hidden-xs"> 
+                            <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
+                            </div>
+                        </footer>
+                    <?php
+                }
+            }
+        } else {
+            ?>
+            <h1 class="mt-2 head-update">Payments and Invoices</h1>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                <li class="breadcrumb-item active">Payment and Invoices</li>
+            </ol>
+            <?php
+            if (isset($_GET['msg'])) {
+                if ($_GET['msg'] == 'add') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Fees Successfully paid
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'success') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle"></i> Payment processed successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>';
+                }
+                if ($_GET['msg'] === 'error' && isset($_GET['errors'])) {
+                    // Decode and display error messages
+                    $errors = urldecode($_GET['errors']);
+                    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
+                    echo '<i class="bi bi-exclamation-circle"></i> ' . htmlspecialchars($errors);
+                    echo '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+                    echo '</div>';
+                } 
+                if ($_GET['msg'] == 'delete') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Payment deleted successfully!
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'partial') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Partial payment was successful
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'update') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> payment was Updated successfully
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if($_GET['msg'] == 'send'){
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle"></i> email sent successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>';
+                }
+            }
+            ?>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <span class="material-symbols-outlined">manage_accounts</span> Payments
+                        </div>
+                        <div class="col-md-6 d-flex justify-content-end align-items-center">
+                            <!-- Search Bar -->
+                            <div class="mb-0 me-3">
+                                <input type="text" id="searchBar" class="form-control" placeholder="Search Invoices..." onkeyup="searchInvoices()">
+                            </div>
+                            <!-- Button to trigger modal -->
+                            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#payFeesModal">
+                                Pay Fees
+                            </button>
+                        </div>
+                        <!-- Modal -->
+                        <?php
+                                               
+                        include('DB_connect.php');
+
+                        $student_query = "SELECT parent_id FROM students WHERE student_id = ?";
+                        $stmt = $connect->prepare($student_query);
+                        $stmt->bind_param('i',  $userId);
+                        $stmt->execute();
+                        $stmt->bind_result($parent_id);
+                        $stmt->fetch();
+                        $stmt->close();
+
+                        ?>
+
+                        <div class="modal fade" id="payFeesModal" tabindex="-1" aria-labelledby="payFeesModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="payFeesModalLabel">Choose Payment Method</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                     <div class="mb-3">
+                                        <!-- Form to add fees -->
+                                        <form action="deposit.php" method="post">
+                                            <label for="payment_method">Payment Method:</label>
+                                                <select id="payment_method" name="payment_method" onchange="togglePaymentFields()">
+                                                <option value="cash" class="text-muted">Choose Payment</option>
+                                                    <option value="cash">Cash</option>
+                                                    <option value="mpesa">M-Pesa</option>
+                                                    <option value="credit_card">Credit Card</option>
+                                                </select><br><br>
+                                            <div class="modal-footer">
+                                           
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        
+                                            </div>
+                                            
+                                        </form>  
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal fade" id="emailReceiptModal" tabindex="-1" aria-labelledby="emailReceiptModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="emailReceiptModalLabel">Send Receipt via Email</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form action="deposit.php" method="post">
+                                    <input type="hidden" id="emailReceiptPaymentId" name="payment_id">
+                                    <div class="mb-3">
+                                        <label for="emailAddress" class="form-label">Email Address</label>
+                                        <input type="email" class="form-control" id="emailAddress" name="email" required>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="submit" class="btn btn-primary">Send Receipt</button>
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        </div>
+                <div class="modal fade" id="partialPaymentModal" tabindex="-1" aria-labelledby="partialPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="partialPaymentModalLabel">Make Partial Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Form to make partial payment -->
+                <form action="deposit.php" method="post">
+                    <div class="mb-3">
+                        <label for="paymentId" class="form-label">Payment ID</label>
+                        <input type="text" class="form-control" id="paymentId" name="payment_id" required>
+                    </div>
+                    <label for="payment_method">Payment Method:</label>
+                                                <select id="payment_method" name="payment_method" onchange="togglePaymentFields()">
+                                                
+                                                    <option value="cash">Cash</option>
+                                                    <option value="mpesa">M-Pesa</option>
+                                                    <option value="credit_card">Credit Card</option>
+                                                </select><br><br>
+                  <div id="mpesaField" class="mb-3" style="display: none;">
+                    <label for="mpesaNumber" class="form-label">M-Pesa Number</label>
+                    <input type="text" class="form-control" id="mpesaNumber" name="mpesa_number">
+                </div>
+                    <div class="mb-3">
+                        <label for="partialAmount" class="form-label">Amount to Pay</label>
+                        <input type="number" class="form-control" id="partialAmount" name="partial_amount" min="1" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-success" name="pay_remain">Submit Payment</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+                <div class="table-responsive">
+                    <div class="card-body">
+                        <!-- Invoices Section -->
+                        <div class="invoices-section mt-1 mb-2">
+                            <h3>My Payments</h3>
+                            <?php
+            // Re-open connection
+            include('DB_connect.php');
+
+            // Check if student_id is set in the session
+            if (isset($_SESSION['id'])) {
+                $student_id = $_SESSION['id'];
                 $items_per_page = 4; // Number of items per page
                 $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
                 $offset = ($current_page - 1) * $items_per_page;
@@ -1464,7 +1781,7 @@ $connect->close();
                         deposit.paid_amount, 
                         deposit.remaining_amount,
                         deposit.payment_method,
-                        students.student_contact_number1 AS payment_number,
+                        deposit.payment_number,
                         deposit.status,
                         deposit.payment_date,
                         deposit.due_date
@@ -1483,11 +1800,11 @@ $connect->close();
 
                         if ($result->num_rows > 0) {
                             echo '<table class="table table-bordered" id="payTable">';
-                            echo '<thead><tr><th>ID</th><th>Student Name</th><th>Payment Date</th><th>Due Date</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Payment Method</th><th>Payment Number</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+                            echo '<thead><tr><th>Student Name</th><th>Payment Date</th><th>Due Date</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Payment Method</th><th>Payment Number</th><th>Status</th><th>Action</th></tr></thead><tbody>';
                             while ($row = $result->fetch_assoc()) {
                                 
                                 echo '<tr>';
-                                echo '<td>' . htmlspecialchars($row['payment_id']) . '</td>';
+                               
                                 echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
                                 echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
                                 echo '<td>' . htmlspecialchars($row['due_date']) . '</td>';
@@ -1600,9 +1917,9 @@ $connect->close();
                 if ($_GET['action'] == 'add') {
                     ?>
                     <h1 class="mt-2 head-update">Payments and Invoices</h1>
-                    <ol class="breadcrumb mb-4 small">
-                        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                        <li class="breadcrumb-item active"><a href="payment.php">Payments and Invoices</a></li>
+                    <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                        <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                        <li class="breadcrumb-item active"><a href="payment.php"  style="color: #f8f9fa;">Payments and Invoices</a></li>
                         <li class="breadcrumb-item active">View Invoices</li>
                     </ol>
                     <div class="row">
@@ -1647,7 +1964,7 @@ $connect->close();
                                                         deposit.paid_amount, 
                                                         deposit.remaining_amount,
                                                         deposit.payment_method,
-                                                        students.student_contact-number1 AS payment_number,
+                                                        students.student_contact_number1 AS payment_number,
                                                         deposit.status,
                                                         deposit.payment_date,
                                                         deposit.due_date
@@ -1753,9 +2070,9 @@ $connect->close();
                         ?>
                         
                         <h1 class="mt-2 head-update">Edit Fees</h1>
-                        <ol class="breadcrumb mb-4 small">
-                            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                            <li class="breadcrumb-item"><a href="Deposit.php">All Payments</a></li>
+                        <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                            <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;" >Dashboard</a></li>
+                            <li class="breadcrumb-item"><a href="Deposit.php"   style="color: #f8f9fa;">All Payments</a></li>
                             <li class="breadcrumb-item active">Edit Fees</li>
                         </ol>
                         <?php 
@@ -1763,9 +2080,9 @@ $connect->close();
 
                             // Fetch the student's data from the database
                             $query = "SELECT d.*, s.student_name
-FROM deposit d
-JOIN students s ON d.student_id = s.student_id
-WHERE d.payment_id = ?";
+                                        FROM deposit d
+                                        JOIN students s ON d.student_id = s.student_id
+                                        WHERE d.payment_id = ?";
                             $stmt = $connect->prepare($query);
                             $stmt->bind_param('i', $payment_id);
                             $stmt->execute();
@@ -1779,80 +2096,78 @@ WHERE d.payment_id = ?";
                     
                             $stmt->close();
                         ?>
-                        <div class="card mb-4">
-                        <div class="card-header">
-                            <div class="row">
-                                    <div class="card-header">
-                                    <?php if (isset($errors) && !empty($errors)): ?>
-                                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                            <?php foreach ($errors as $error): ?>
-                                                <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?><br>
-                                            <?php endforeach; ?>
-                                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                        </div>
-                                    <?php endif; ?>
-    
-                                    <?php if (isset($message) && !empty($message) && empty($errors)): ?>
-                                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                         <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
-                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                    </div>
-                                    <?php endif; ?>
-                                        <span class="material-symbols-outlined">manage_accounts</span>Edit Fees
-                                    </div>
-                                    <div class="card-body">
-                                    <form action="deposit.php" method="post">
-                            <input type="hidden" name="id" value="<?php echo htmlspecialchars($student['payment_id']); ?>">
+                       <div class="card">
+    <div class="card-header">
+        <div class="row">
+            <div class="card-header">
+                <?php if (isset($errors) && !empty($errors)): ?>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <?php foreach ($errors as $error): ?>
+                            <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?><br>
+                        <?php endforeach; ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
 
-                            <div class="mb-3">
-                                <label for="studentName" class="form-label">Student Name</label>
-                                <input type="text" class="form-control" id="studentName" name="student_name" value="<?php echo htmlspecialchars($student['student_name']); ?>" readonly>
-                            </div>
+                <?php if (isset($message) && !empty($message) && empty($errors)): ?>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
+                <span class="material-symbols-outlined">manage_accounts</span>Edit Fees
+            </div>
+            <div class="card-body">
+                <form action="deposit.php" method="post" onsubmit="return validateForm();">
+                    <input type="hidden" name="id" value="<?php echo htmlspecialchars($student['payment_id']); ?>">
 
-                            <div class="mb-3">
-                                <label for="totalAmount" class="form-label">Total Amount</label>
-                                <input type="number" class="form-control" id="totalAmount" name="total_amount" value="<?php echo htmlspecialchars($student['total_amount']); ?>" min="0" required>
-                            </div>
+                    <div class="mb-3">
+                        <label for="studentName" class="form-label">Student Name</label>
+                        <input type="text" class="form-control" id="studentName" name="student_name" value="<?php echo htmlspecialchars($student['student_name']); ?>" readonly>
+                    </div>
 
-                            <div class="mb-3">
-                                <label for="paidAmount" class="form-label">Paid Amount</label>
-                                <input type="number" class="form-control" id="paidAmount" name="paid_amount" value="<?php echo htmlspecialchars($student['paid_amount']); ?>" min="0" required>
-                            </div>
+                    <div class="mb-3">
+                        <label for="totalAmount" class="form-label">Total Amount</label>
+                        <input type="number" class="form-control" id="totalAmount" name="total_amount" value="<?php echo htmlspecialchars($student['total_amount']); ?>" min="0" required>
+                    </div>
 
-                            <div class="mb-3">
-                                <label for="remainingAmount" class="form-label">Remaining Amount</label>
-                                <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" value="<?php echo htmlspecialchars($student['remaining_amount']); ?>" readonly>
-                            </div>
+                    <div class="mb-3">
+                        <label for="paidAmount" class="form-label">Paid Amount</label>
+                        <input type="number" class="form-control" id="paidAmount" name="paid_amount" value="<?php echo htmlspecialchars($student['paid_amount']); ?>" min="0" required oninput="updateRemaining()">
+                    </div>
 
-                            <div class="mb-3">
-                                <label for="paymentMethod" class="form-label">Payment Method</label>
-                                <select class="form-select" id="paymentMethod" name="payment_method" required>
-                                    <option value="cash" <?php echo $student['payment_method'] == 'cash' ? 'selected' : ''; ?>>Cash</option>
-                                    <option value="mpesa" <?php echo $student['payment_method'] == 'mpesa' ? 'selected' : ''; ?>>M-Pesa</option>
-                                    <option value="credit_card" <?php echo $student['payment_method'] == 'credit_card' ? 'selected' : ''; ?>>Credit Card</option>
-                                </select>
-                            </div>
+                    <div class="mb-3">
+                        <label for="remainingAmount" class="form-label">Remaining Amount</label>
+                        <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" value="<?php echo htmlspecialchars($student['remaining_amount']); ?>" readonly>
+                    </div>
 
-                            
+                    <div class="mb-3">
+                        <label for="paymentMethod" class="form-label">Payment Method</label>
+                        <select class="form-select" id="paymentMethod" name="payment_method" required>
+                            <option value="cash" <?php echo $student['payment_method'] == 'cash' ? 'selected' : ''; ?>>Cash</option>
+                            <option value="mpesa" <?php echo $student['payment_method'] == 'mpesa' ? 'selected' : ''; ?>>M-Pesa</option>
+                            <option value="credit_card" <?php echo $student['payment_method'] == 'credit_card' ? 'selected' : ''; ?>>Credit Card</option>
+                        </select>
+                    </div>
 
-                            <div class="mb-3">
-                                <label for="status" class="form-label">Status</label>
-                                <select class="form-select" id="status" name="status" required>
-                                    <option value="Unpaid" <?php echo $student['status'] == 'Unpaid' ? 'selected' : ''; ?>>Unpaid</option>
-                                    <option value="Pending" <?php echo $student['status'] == 'Pending' ? 'selected' : ''; ?>>Pending</option>
-                                    <option value="Paid" <?php echo $student['status'] == 'Paid' ? 'selected' : ''; ?>>Paid</option>
-                                </select>
-                            </div>
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status" required>
+                            <option value="Unpaid" <?php echo $student['status'] == 'Unpaid' ? 'selected' : ''; ?>>Unpaid</option>
+                            <option value="Pending" <?php echo $student['status'] == 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                            <option value="Paid" <?php echo $student['status'] == 'Paid' ? 'selected' : ''; ?>>Paid</option>
+                        </select>
+                    </div>
 
-                            <div class="mb-3">
-                                <button type="submit" class="btn btn-success">Update Payment</button>
-                                <a href="Deposit.php" class="btn btn-secondary">Cancel</a>
-                            </div>
-                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="mb-3">
+                        <button type="submit" class="btn btn-success" name="update_payment">Update Payment</button>
+                        <a href="Deposit.php" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
                         <footer class="main-footer px-3">
                             <div class="pull-right hidden-xs"> 
                             <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
@@ -1864,19 +2179,51 @@ WHERE d.payment_id = ?";
             } else {
                 ?>
                 <h1 class="mt-2 head-update">Payments and Invoices</h1>
-                <ol class="breadcrumb mb-4 small">
-                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                    <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
                     <li class="breadcrumb-item active">Payments and Invoices</li>
                 </ol>
                 <?php
-                if (isset($_GET['msg'])) {
-                    if ($_GET['msg'] == 'add') {
-                        echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-                            <i class="bi bi-check-circle"></i>Fees Successfully paid
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>';
-                    }
+            if (isset($_GET['msg'])) {
+                if ($_GET['msg'] == 'add') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Fees Successfully paid
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
                 }
+                if ($_GET['msg'] == 'success') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle"></i> Payment processed successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>';
+                }
+                if ($_GET['msg'] === 'error' && isset($_GET['errors'])) {
+                    // Decode and display error messages
+                    $errors = urldecode($_GET['errors']);
+                    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
+                    echo '<i class="bi bi-exclamation-circle"></i> ' . htmlspecialchars($errors);
+                    echo '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+                    echo '</div>';
+                } 
+                if ($_GET['msg'] == 'delete') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Payment deleted successfully!
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'partial') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Partial payment was successful
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+                if ($_GET['msg'] == 'update') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> payment was Updated successfully
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
+            }
                 ?>
                 <div class="card mb-4">
                     <div class="card-header">
@@ -1886,9 +2233,11 @@ WHERE d.payment_id = ?";
                             </div>
                             <div class="col-md-6 d-flex justify-content-end align-items-center">
                                 <!-- Search Bar -->
-                                <div class="mb-0 me-3">
-                                    <input type="text" id="searchBar" class="form-control" placeholder="Search Payments..." onkeyup="searchInvoices()">
-                                </div>
+                                <form id="searchForm" method="GET" class="d-inline">
+    <div class="mb-0 me-3">
+        <input type="text" id="searchBar" name="query" class="form-control" placeholder="Search Payments..." onkeyup="searchInvoices()">
+    </div>
+</form>
                                 <!-- Button to trigger modal -->
                                 <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#payFeesModal">
                                     Add Fees
@@ -1974,10 +2323,7 @@ if ($displayRole === 'Admin') {
         <!-- Options will be populated dynamically -->
     </select>
 </div>
-<div class="mb-3">
-    <label for="mpesaNumber" class="form-label">Payment Number</label>
-    <input type="number" class="form-control" id="mpesaNumber" name="mpesa_number" required>
-</div>
+
 <div class="mb-3">
     <label for="totalAmount" class="form-label">Total Payable Amount:</label>
     <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" required readonly>
@@ -1996,6 +2342,7 @@ if ($displayRole === 'Admin') {
                                             </div>
                                             <label for="payment_method">Payment Method:</label>
                                                 <select id="payment_method" name="payment_method" required>
+                                                <option value="cash" class="text-muted">Choose Payment</option>
                                                     <option value="cash">Cash</option>
                                                     <option value="mpesa">M-Pesa</option>
                                                     <option value="credit_card">Credit Card</option>
@@ -2019,7 +2366,7 @@ if ($displayRole === 'Admin') {
                                                     </div>
                                                 </div>
                                                 <div class="mb-3">
-                                                    <button type="submit" class="btn btn-success" name="submit_payment">Submit Payment</button>
+                                                    <button type="submit" class="btn btn-success" name="submit_payment2">Submit Payment</button>
                                                 </div>
                                             </form>
                                         </div>
@@ -2027,6 +2374,29 @@ if ($displayRole === 'Admin') {
                                 </div>
                             </div>
                         </div>
+                        <div class="modal fade" id="emailReceiptModal" tabindex="-1" aria-labelledby="emailReceiptModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="emailReceiptModalLabel">Send Receipt via Email</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form action="deposit.php" method="post">
+                                    <input type="hidden" id="emailReceiptPaymentId" name="payment_id">
+                                    <div class="mb-3">
+                                        <label for="emailAddress" class="form-label">Email Address</label>
+                                        <input type="email" class="form-control" id="emailAddress" name="email" required>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="submit" class="btn btn-primary">Send Receipt</button>
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
@@ -2034,145 +2404,150 @@ if ($displayRole === 'Admin') {
                                 <div class="invoices-section mt-1 mb-2">
                                     <h3>All Payments</h3>
                                     <?php
-                                    include('DB_connect.php');
-                                    if ($connect instanceof mysqli) {
-                                        $items_per_page = 10; // Admin might see more items per page
-                                        $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-                                        $offset = ($current_page - 1) * $items_per_page;
+include('DB_connect.php');
 
-                                        $stmt = $connect->prepare("
-                                          SELECT 
-                                            deposit.payment_id AS payment_id,
-                                            students.student_name AS student_name,
-                                            deposit.total_amount, 
-                                            deposit.paid_amount, 
-                                            deposit.remaining_amount,
-                                            deposit.payment_method,
-                                            students.student_contact_number1 AS payment_number,
-                                            deposit.status,
-                                            deposit.payment_date
-                                          FROM 
-                                            deposit
-                                          JOIN 
-                                            students ON deposit.student_id = students.student_id
-                                          LIMIT ? OFFSET ?;
-                                        ");
-                                        if ($stmt) {
-                                            $stmt->bind_param("ii", $items_per_page, $offset);
-                                            $stmt->execute();
-                                            $result = $stmt->get_result();
+if ($connect instanceof mysqli) {
+    $items_per_page = 10; // Items per page
+    $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+    $offset = ($current_page - 1) * $items_per_page;
 
-                                            if ($result->num_rows > 0) {
-                                                echo '<table class="table table-bordered" id="payTable">';
-                                                echo '<thead><tr><th>ID</th><th>Student Name</th><th>Payment Date</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Payment Method</th><th>Payment Number</th><th>Status</th><th>Action</th></tr></thead><tbody>';
-                                                while ($row = $result->fetch_assoc()) {
-                                                    $remainingAmount = $row['total_amount'] - $row['paid_amount'];
-                                                    echo '<tr>';
-                                                    echo '<td>' . htmlspecialchars($row['payment_id']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['total_amount']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['paid_amount']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['remaining_amount']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['payment_number']) . '</td>';
-                                                    echo '<td>' . htmlspecialchars($row['status']) . '</td>';
-                                                    echo '<td>
-                                                        <div class="btn-group" role="group" aria-label="Actions">
-                                                            <button type="button" class="btn btn-primary btn-sm me-3" data-bs-target="#viewReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">
-                                             Invoice
-                                        </button>
-                                        
-                                         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#emailReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">
-                                            Email Receipt
-                                        </button>
-                                                        <a href="deposit.php?action=edit&id='. htmlspecialchars($row['payment_id']) .'" class="btn btn-warning btn-sm ms-2 me-2">
-                                                                <i class="bi bi-pencil"></i>
-                                                            </a>
-                                                       <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deletePaymentModal' . htmlspecialchars($row['payment_id']) . '">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
+    // Handle search query
+    $searchQuery = '';
+    if (isset($_GET['query'])) {
+        $searchQuery = $_GET['query'];
+    }
 
-                                                       <div class="modal fade" id="deletePaymentModal'. htmlspecialchars($row['payment_id']) .'" tabindex="-1" aria-labelledby="deletePaymentModalLabel'. htmlspecialchars($row['payment_id']) .'" aria-hidden="true">
-                                                        <div class="modal-dialog">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header">
-                                                                    <h5 class="modal-title" id="deletePaymentModalLabel'. htmlspecialchars($row['payment_id']) .'">Confirm Delete</h5>
-                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                                </div>
-                                                                <div class="modal-body">
-                                                                    Are you sure you want to delete this payment?
-                                                                </div>
-                                                                <div class="modal-footer">
-                                                                    <form action="deposit.php?action=delete" method="post">
-                                                                     <input type="hidden" name="payment_id" value="' . htmlspecialchars($row['payment_id']) . '">;
-                                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                                        <button type="submit" name="delete_deposit" class="btn btn-danger">Delete</button>
-                                                                    </form>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                 </div>
-                                                    </td>';
-                                                    echo '</tr>';
-                                                }
-                                                echo '</tbody></table>';
+    // Prepare the SQL statement based on whether a search query is present
+    if ($searchQuery !== '') {
+        $sql = "SELECT p.*, s.student_name FROM deposit p
+                JOIN students s ON p.student_id = s.student_id
+                WHERE 
+                    p.payment_number LIKE ? OR 
+                    s.student_name LIKE ? OR 
+                    p.payment_method LIKE ? OR 
+                    p.status LIKE ? OR 
+                    p.payment_date LIKE ? OR 
+                    p.due_date LIKE ?
+                LIMIT ? OFFSET ?";
+        
+        $stmt = $connect->prepare($sql);
+        $likeQuery = "%" . $searchQuery . "%";
+        $stmt->bind_param("ssssssii", $likeQuery, $likeQuery, $likeQuery, $likeQuery, $likeQuery, $likeQuery, $items_per_page, $offset);
+    } else {
+        $sql = "SELECT p.*, s.student_name FROM deposit p
+                JOIN students s ON p.student_id = s.student_id
+                LIMIT ? OFFSET ?";
+        
+        $stmt = $connect->prepare($sql);
+        $stmt->bind_param("ii", $items_per_page, $offset);
+    }
 
-                                                $stmt_total = $connect->prepare("
-                                                  SELECT COUNT(*) AS total_records
-                                                  FROM deposit
-                                                  JOIN students ON deposit.student_id = students.student_id
-                                                ");
-                                                if ($stmt_total) {
-                                                    $stmt_total->execute();
-                                                    $result_total = $stmt_total->get_result();
-                                                    $total_records = $result_total->fetch_assoc()['total_records'];
-                                                    $total_pages = ceil($total_records / $items_per_page);
+    // Execute the statement
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result();
 
-                                                    echo '<nav aria-label="Page navigation"><ul class="pagination">';
-                                                    
-                                                    if ($current_page > 1) {
-                                                        echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page - 1) . '">Previous</a></li>';
-                                                    } else {
-                                                        echo '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
-                                                    }
-                                                    
-                                                    for ($page = 1; $page <= $total_pages; $page++) {
-                                                        if ($page == $current_page) {
-                                                            echo '<li class="page-item active"><span class="page-link">' . $page . '</span></li>';
-                                                        } else {
-                                                            echo '<li class="page-item"><a class="page-link" href="?page=' . $page . '">' . $page . '</a></li>';
-                                                        }
-                                                    }
-                                                    
-                                                    if ($current_page < $total_pages) {
-                                                        echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page + 1) . '">Next</a></li>';
-                                                    } else {
-                                                        echo '<li class="page-item disabled"><span class="page-link">Next</span></li>';
-                                                    }
-                                                    
-                                                    echo '</ul></nav>';
-                                                } else {
-                                                    echo '<p>Failed to get total number of records.</p>';
-                                                }
-                                            } else {
-                                                echo '<p>No payments found.</p>';
-                                            }
-                                            $stmt->close();
-                                        } else {
-                                            echo '<p>Failed to prepare SQL statement for payments.</p>';
-                                        }
-                                    } else {
-                                        echo '<p>Database connection is not valid.</p>';
-                                    }
-
-                                    $connect->close();
-                                    ?>
+        echo '<table class="table table-bordered" id="payTable">';
+        echo '<thead><tr><th>ID</th><th>Student Name</th><th>Payment Date</th><th>Total Amount</th><th>Paid Amount</th><th>Remaining Amount</th><th>Payment Method</th><th>Payment Number</th><th>Status</th><th>Action</th></tr></thead>';
+        echo '<tbody>';
+        
+        if ($result->num_rows > 0) {
+            while ($row = $result->fetch_assoc()) {
+                echo '<tr>';
+                echo '<td>' . htmlspecialchars($row['payment_id']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['student_name']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['payment_date']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['total_amount']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['paid_amount']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['remaining_amount']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['payment_number']) . '</td>';
+                echo '<td>' . htmlspecialchars($row['status']) . '</td>';
+                echo '<td>
+                    <div class="btn-group" role="group" aria-label="Actions">
+                        <button type="button" class="btn btn-primary btn-sm me-3" data-bs-target="#viewReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">Invoice</button>
+                        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#emailReceiptModal" data-id="' . htmlspecialchars($row['payment_id']) . '">Email Receipt</button>
+                        <a href="deposit.php?action=edit&id=' . htmlspecialchars($row['payment_id']) . '" class="btn btn-warning btn-sm ms-2 me-2"><i class="bi bi-pencil"></i>Edit</a>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deletePaymentModal' . htmlspecialchars($row['payment_id']) . '"><i class="bi bi-trash"></i>Delete</button>
+                        <div class="modal fade" id="deletePaymentModal' . htmlspecialchars($row['payment_id']) . '" tabindex="-1" aria-labelledby="deletePaymentModalLabel' . htmlspecialchars($row['payment_id']) . '" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="deletePaymentModalLabel' . htmlspecialchars($row['payment_id']) . '">Confirm Delete</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">Are you sure you want to delete this payment?</div>
+                                    <div class="modal-footer">
+                                        <form action="deposit.php?action=delete" method="post">
+                                            <input type="hidden" name="payment_id" value="' . htmlspecialchars($row['payment_id']) . '">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" name="delete_deposit" class="btn btn-danger">Delete</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </td>';
+                echo '</tr>';
+            }
+        } else {
+            echo '<tr><td colspan="10">No results found.</td></tr>'; // Adjust column span as needed
+        }
+
+        echo '</tbody></table>';
+
+        // Pagination Logic
+        $stmt_total = $connect->prepare("SELECT COUNT(*) AS total_records FROM deposit");
+        if ($stmt_total) {
+            $stmt_total->execute();
+            $result_total = $stmt_total->get_result();
+            $total_records = $result_total->fetch_assoc()['total_records'];
+            $total_pages = ceil($total_records / $items_per_page);
+
+            echo '<nav aria-label="Page navigation"><ul class="pagination">';
+            
+            if ($current_page > 1) {
+                echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page - 1) . '&query=' . urlencode($searchQuery) . '">Previous</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
+            }
+            
+            for ($page = 1; $page <= $total_pages; $page++) {
+                if ($page == $current_page) {
+                    echo '<li class="page-item active"><span class="page-link">' . $page . '</span></li>';
+                } else {
+                    echo '<li class="page-item"><a class="page-link" href="?page=' . $page . '&query=' . urlencode($searchQuery) . '">' . $page . '</a></li>';
+                }
+            }
+            
+            if ($current_page < $total_pages) {
+                echo '<li class="page-item"><a class="page-link" href="?page=' . ($current_page + 1) . '&query=' . urlencode($searchQuery) . '">Next</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">Next</span></li>';
+            }
+            
+            echo '</ul></nav>';
+        } else {
+            echo '<p>Failed to get total number of records.</p>';
+        }
+
+        $stmt->close();
+    } else {
+        echo '<p>Failed to prepare SQL statement for payments.</p>';
+    }
+} else {
+    echo '<p>Database connection is not valid.</p>';
+}
+
+$connect->close();
+?>
+</div>
+  </div>
+    </div>
+       </div>
+       </div>
+
                 <footer class="main-footer px-3">
                             <div class="pull-right hidden-xs"> 
                             <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
@@ -2181,72 +2556,84 @@ if ($displayRole === 'Admin') {
                 <?php
             }
             ?>
+           
         </main>
     <?php endif; ?>
 
     <script>
-   document.addEventListener('DOMContentLoaded', function() {
-    function getQueryParams() {
-        const params = new URLSearchParams(window.location.search);
-        return {
-            student_id: params.get('student_id'),
-            student_number: params.get('student_number'),
-            total_amount: params.get('total_amount'),
-            paid_amount: params.get('paid_amount'),
-            remaining_amount: params.get('remaining_amount'),
-            due_date: params.get('due_date')
-        };
+   function searchInvoices() {
+    // Submit the form
+    document.getElementById("searchForm").submit();
+}
+ function togglePaymentP(){
+
+    const paymentMethod = document.getElementById('payment_method').value;
+    const mpesaField = document.getElementById('mpesaField');
+
+    if (paymentMethod === 'mpesa') {
+        mpesaField.style.display = 'block';
+    } else {
+        mpesaField.style.display = 'none';
+    }
+}
+     function togglePay(){
+            const paymentMethod = document.getElementById('payment_method').value;
+           
+            if (paymentMethod === 'mpesa') {
+                // Redirect to M-Pesa integration page
+                window.location.href = 'daraja.php'; // Replace with your actual URL
+            } else if (paymentMethod === 'credit_card') {
+                // Redirect to Credit Card payment page
+                window.location.href = 'creditpayment.php'; // Replace with your actual Credit Card URL
+            }else if (paymentMethod === 'cash'){
+                window.location.href = 'cash.php';
+            }
+        }
+        function fillFormData() {
+    // Simulating fetched data from QR code (replace this with actual parsing if needed)
+    const qrData = document.getElementById('scannerInput').value.split(';');
+    const dataObj = {};
+
+    qrData.forEach(item => {
+        const [key, value] = item.split(':');
+        if (key && value) {
+            dataObj[key.trim()] = value.trim();
+        }
+    });
+
+    // Autofill the form fields
+    document.getElementById('studentSelect').value = dataObj['student_id'] || '';
+    document.getElementById('admissionNumber').value = dataObj['admission_number'] || '';
+    document.getElementById('parentSelect').value = dataObj['parent_id'] || '';
+    document.getElementById('courseSelect').value = dataObj['course_id'] || '';
+    document.getElementById('totalAmount').value = dataObj['course_fee'] || '';
+
+    // Optionally, update the dropdowns if needed (you can populate student and parent dropdowns based on IDs)
+    // Example:
+    // populateStudentDropdown(dataObj['student_id']);
+    // populateParentDropdown(dataObj['parent_id']);
+
+}
+
+
+          function updateRemaining() {
+        const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
+        const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
+        const remainingAmount = Math.max(0, totalAmount - paidAmount);
+        document.getElementById('remainingAmount').value = remainingAmount;
     }
 
-    function fillForm(data) {
-        // Fetching form elements
-        const studentSelect = document.getElementById('studentSelect');
-        const studentNumberSelect = document.getElementById('studentNumber');
-        const totalAmountInput = document.getElementById('totalAmount');
-        const paidAmountInput = document.getElementById('paidAmount');
-        const remainingAmountInput = document.getElementById('remainingAmount');
-        const dueDateInput = document.getElementById('dueDate');
+    function validateForm() {
+        const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
+        const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
 
-        // Populate the form based on data
-        if (studentSelect && data.student_id) {
-            studentSelect.value = data.student_id;
-        }
-        if (studentNumberSelect && data.student_number) {
-            studentNumberSelect.value = data.student_number;
-        }
-        if (totalAmountInput && data.total_amount) {
-            totalAmountInput.value = data.total_amount;
-        }
-        if (paidAmountInput && data.paid_amount) {
-            paidAmountInput.value = data.paid_amount;
-        }
-        if (remainingAmountInput && data.total_amount && data.paid_amount) {
-            remainingAmountInput.value = data.total_amount - data.paid_amount;
-        }
-        if (dueDateInput && data.due_date) {
-            dueDateInput.value = data.due_date;
+        if (paidAmount > totalAmount) {
+            alert('Paid amount cannot exceed the total amount.');
+            return false; // Prevent form submission
         }
 
-        // Ensure remaining amount updates correctly if paid amount changes
-        if (paidAmountInput && remainingAmountInput) {
-            paidAmountInput.addEventListener('input', function() {
-                const totalAmount = parseFloat(totalAmountInput.value) || 0;
-                const paidAmount = parseFloat(this.value) || 0;
-                remainingAmountInput.value = totalAmount - paidAmount;
-            });
-        }
+        return true; // Allow form submission
     }
-
-    // Ensure the modal has opened before running this script
-    const modalElement = document.getElementById('payFeesModal');
-    if (modalElement) {
-        modalElement.addEventListener('shown.bs.modal', function () {
-            const queryParams = getQueryParams();
-            fillForm(queryParams);
-        });
-    }
-});
-
         document.addEventListener('DOMContentLoaded', function() {
     var partialPaymentModal = document.getElementById('partialPaymentModal');
     partialPaymentModal.addEventListener('show.bs.modal', function (event) {
@@ -2392,10 +2779,42 @@ if ($displayRole === 'Admin') {
     updateAmounts();
 });
 
+function searchInvoices() {
+    var input, filter, table, rows, cells, i, j, match;
+    input = document.getElementById("searchBar");
+    filter = input.value.toLowerCase();
+    table = document.getElementById("payTable");
+    rows = table.getElementsByTagName("tr");
 
-        function togglePaymentFields(payment_method) {
-        document.getElementById('mpesaFields').style.display = (payment_method === 'mpesa') ? 'block' : 'none';
-        document.getElementById('creditCardFields').style.display = (payment_method === 'credit_card') ? 'block' : 'none';
+    for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+        cells = rows[i].getElementsByTagName("td");
+        match = false;
+
+        for (j = 0; j < cells.length; j++) {
+            if (cells[j]) {
+                if (cells[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
+                    match = true;
+                }
+            }
+        }
+
+        rows[i].style.display = match ? "" : "none";
+    }
+}
+
+function togglePaymentFields() {
+        const paymentMethod = document.getElementById('payment_method').value;
+       
+        if (paymentMethod === 'mpesa') {
+            // Redirect to M-Pesa integration page
+            window.location.href = 'daraja.php'; // Replace with your actual URL
+        }  else if (paymentMethod === 'credit_card') {
+        // Redirect to Credit Card payment page
+        window.location.href = 'creditpayment.php'; // Replace with your actual Credit Card URL
+        } else if( paymentMethod === 'cash'){
+            window.location.href = 'cash.php'; 
+
+        }
     }
         document.addEventListener('DOMContentLoaded', function () {
     var emailButtons = document.querySelectorAll('[data-bs-target="#emailReceiptModal"]');
@@ -2445,32 +2864,7 @@ if ($displayRole === 'Admin') {
     totalAmountField.addEventListener('input', updateStatus);
     paidAmountField.addEventListener('input', updateStatus);
 });
-          function searchInvoices() {
-                var input, filter, table, rows, cells, i, j, match;
-                input = document.getElementById("searchBar");
-                filter = input.value.toLowerCase();
-                table = document.getElementById("payTable");
-                rows = table.getElementsByTagName("tr");
-        
-                for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
-                    cells = rows[i].getElementsByTagName("td");
-                    match = false;
-        
-                    for (j = 0; j < cells.length; j++) {
-                        if (cells[j]) {
-                            if (cells[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
-                                match = true;
-                            }
-                        }
-                    }
-        
-                    if (match) {
-                        rows[i].style.display = "";
-                    } else {
-                        rows[i].style.display = "none";
-                    }
-                }
-            }
+
         let sideBarOpen = false;
         let menuIcon = document.querySelector('.sidebar');
 

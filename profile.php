@@ -63,8 +63,12 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     // Check if student_image exists and is not empty
     if (isset($user['student_image']) && !empty($user['student_image'])) {
         $formdata['image'] = $_POST['hidden_admin_image'] ?? $user['student_image'];
+    } elseif (isset($user['parent_image']) && !empty($user['parent_image'])) {
+        $formdata['image'] = $_POST['hidden_admin_image'] ?? $user['parent_image'];
+    } elseif (isset($user['admin_image']) && !empty($user['admin_image'])) {
+        $formdata['image'] = $_POST['hidden_admin_image'] ?? $user['admin_image'];
     } else {
-        $formdata['image'] = 'default.jpg'; // Default fallback if not set
+        $formdata['image'] = 'default.jpg'; // Default fallback if none are set
     }
 
     // Handle form submission
@@ -89,7 +93,7 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
                 // Attempt to move the uploaded file
                 if (move_uploaded_file($temporary_name, $upload_path)) {
                     $formdata['image'] = $new_image_name; // Store the new image name
-                    echo "Uploaded Image: " . htmlspecialchars($new_image_name);
+                   
                 } else {
                     $errors[] = "Failed to upload image. Please try again.";
                     echo "Upload Error: " . htmlspecialchars(error_get_last()['message']);
@@ -122,7 +126,6 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
       }
 
         if (empty($errors)) {
-              
             // Prepare and execute update query
             if ($stmt = $connect->prepare($updateQuery)) {
                
@@ -142,6 +145,32 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     }
 } else {
     $error = "User is not logged in.";
+}
+
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
 }
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
@@ -221,8 +250,8 @@ $connect->close();
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -434,9 +463,9 @@ $connect->close();
            <div class="container-fluid mt-2 px-4">
             <h1 class="mt-2 head-update">Profile</h1>
 
-            <ol class="breadcrumb mb-4 small">
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                <li class="breadcrumb-item active" style="color:white;">Profile</a></li>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                <li class="breadcrumb-item active">Profile</a></li>
             </ol>
             <?php if ($error) { ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -519,7 +548,7 @@ $connect->close();
               <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs">
                   
-                Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p> 
               </footer>
         </main>
         

@@ -116,26 +116,68 @@ if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
             exit();
         }
     
-        // Prepare SQL statement to delete the course record
-        $stmt = $connect->prepare("DELETE FROM courses WHERE course_id = ?");
-        $stmt->bind_param("i", $course_id);
+        // Begin a transaction
+        $connect->begin_transaction();
     
-        // Execute the statement
-        if ($stmt->execute()) {
-            // Redirect or provide success feedback
-            header('Location: course.php?msg=delete');
-            exit();
-        } else {
-            // Handle SQL execution error
-            echo "<div class='alert alert-danger'>Error: " . $stmt->error . "</div>";
+        try {
+    
+            // Prepare SQL statement to delete the course record
+            $stmt_course = $connect->prepare("DELETE FROM courses WHERE course_id = ?");
+            $stmt_course->bind_param("i", $course_id);
+    
+            // Execute the statement
+            if ($stmt_course->execute()) {
+                // Commit the transaction
+                $connect->commit();
+                // Redirect or provide success feedback
+                header('Location: course.php?msg=delete');
+                exit();
+            } else {
+                // Handle SQL execution error
+                echo "<div class='alert alert-danger'>Error deleting course: " . $stmt_course->error . "</div>";
+            }
+    
+            // Close the course statement
+            $stmt_course->close();
+        } catch (Exception $e) {
+            // Rollback the transaction in case of error
+            // Rollback the transaction in case of error
+        $connect->rollback();
+        // Store error message in session to display on redirect
+        $_SESSION['error_message'] = $e->getMessage();
+        // Redirect to the course page
+        header('Location: course.php?msg=error');
+        exit();
         }
-    
-        // Close the statement
-        $stmt->close();
-    }   
+    }
 $queryAllCourses = "SELECT course_id, course_name FROM courses";
 $resultAllCourses = $connect->query($queryAllCourses);
 
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
 // Fetch user preferences
   
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
@@ -227,8 +269,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -443,9 +485,9 @@ if ($settingsResult) {
                       if($_GET['action']== 'add'){
                         ?>
                         <h1 class="mt-2 head-update">Add Courses</h1>
-                         <ol class="breadcrumb mb-4 small">
-                            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                            <li class="breadcrumb-item active"><a href="course.php">Course Management</a></li>
+                         <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                            <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                            <li class="breadcrumb-item active"><a href="course.php"  style="color: #f8f9fa;">Course Management</a></li>
                             <li class="breadcrumb-item active">Add New Course</li>
                         </ol>
                         <div class="row">
@@ -491,7 +533,7 @@ if ($settingsResult) {
 
                         <footer class="main-footer px-3">
                           <div class="pull-right hidden-xs"> 
-                           Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                          <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
                        </footer>
                        <?php
                       }else if(isset($_GET['action']) && $_GET['action'] == 'edit'){
@@ -508,9 +550,9 @@ if ($settingsResult) {
                             if ($course_row = $result->fetch_assoc()) {
                                 ?>
                                 <h1 class="mt-2 head-update">Edit Courses</h1>
-                                <ol class="breadcrumb mb-4 small">
-                                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                    <li class="breadcrumb-item active"><a href="course.php">Course Management</a></li>
+                                <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                                    <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                                    <li class="breadcrumb-item active"><a href="course.php"  style="color: #f8f9fa;">Course Management</a></li>
                                     <li class="breadcrumb-item active">Edit Course</li>
                                 </ol>
                                 <div class="row">
@@ -542,7 +584,7 @@ if ($settingsResult) {
                                 </div>
                               <footer class="main-footer px-3">
                                           <div class="pull-right hidden-xs"> 
-                                          Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                                          <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p> 
                                         </footer>
                                 <?php
                               }
@@ -551,8 +593,8 @@ if ($settingsResult) {
                   }else{
                     ?>
               <h1 class="mt-2 head-update">Course Management</h1>
-               <ol class="breadcrumb mb-4 small">
-                  <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+               <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                  <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
                   <li class="breadcrumb-item active">Course Management</a></li>
                 </ol>
                 <?php
@@ -574,6 +616,16 @@ if ($settingsResult) {
                         <i class="bi bi-check-circle"></i> Successfully deleted Course
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
+                }
+                if ($_GET['msg'] == 'error') {
+                    // Display the error message if it exists in the session
+                    if (isset($_SESSION['error_message'])) {
+                        echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="bi bi-x-circle"></i> ' . htmlspecialchars($_SESSION['error_message']) . '
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>';
+                        unset($_SESSION['error_message']); // Clear the message after displaying
+                    }
                 }
                 }
                 ?>

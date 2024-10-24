@@ -255,6 +255,31 @@ if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
         // Determine role name based on the session
         $displayRole = $roleNames[$userRole] ?? $roleNames["default"];
 }
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
  // Fetch user preferences
   
  $settingsQuery = "SELECT * FROM settings LIMIT 1";
@@ -337,8 +362,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -554,9 +579,9 @@ if ($settingsResult) {
                 if (isset($_GET['action'])) {
                     if ($_GET['action'] == 'add') {
                         ?>
-                        <ol class="breadcrumb mb-4 small">
-                            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                            <li class="breadcrumb-item active"><a href="studententry.php">User Management</a></li>
+                        <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                            <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                            <li class="breadcrumb-item active"><a href="studententry.php" style="color: #f8f9fa;">User Management</a></li>
                             <li class="breadcrumb-item active">Add User</li>
                         </ol>
                         <?php if (!empty($errors)): ?>
@@ -610,9 +635,9 @@ if ($settingsResult) {
                         // Fetch the user data
                         if ($user_row = $result->fetch_assoc()) {
                             ?>
-                            <ol class="breadcrumb mb-4 small">
-                                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                <li class="breadcrumb-item active"><a href="studententry.php">User Management</a></li>
+                            <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                                <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                                <li class="breadcrumb-item active"><a href="studententry.php" style="color: #f8f9fa;">User Management</a></li>
                                 <li class="breadcrumb-item active">Edit User</li>
                             </ol>
                             <?php if (isset($errors) && !empty($errors)): ?>

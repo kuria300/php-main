@@ -101,6 +101,31 @@ if (isset($_POST['delete_grade'])) {
     // Close the statement
     $stmt->close();
 }
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
+}
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
 $settingsResult = $connect->query($settingsQuery);
 
@@ -171,8 +196,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -388,9 +413,9 @@ if ($settingsResult) {
             if ($_GET['action'] == 'add') {
                 ?>
                 <h1 class="mt-2 head-update">Grades Management</h1>
-                <ol class="breadcrumb mb-4 small">
+                <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
                     <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                    <li class="breadcrumb-item active"><a href="grades.php">Grades Management</a></li>
+                    <li class="breadcrumb-item"><a href="grades.php">Grades Management</a></li>
                     <li class="breadcrumb-item active">Add Grade</li>
                 </ol>
                 <div class="row">
@@ -454,9 +479,9 @@ if ($settingsResult) {
             
                     ?>
                     <h1 class="mt-2 head-update">Edit Grade</h1>
-                    <ol class="breadcrumb mb-4 small">
-                        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                        <li class="breadcrumb-item"><a href="grades.php">Grades Management</a></li>
+                    <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                        <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="grades.php" style="color: #f8f9fa;">Grades Management</a></li>
                         <li class="breadcrumb-item active">Edit Grade</li>
                     </ol>
                     <div class="row">
@@ -492,6 +517,11 @@ if ($settingsResult) {
                                 </div>
                             </div>
                         </div>
+                        <footer class="main-footer px-3">
+                <div class="pull-right hidden-xs">
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
+                </div>
+            </footer>
                     </div>
                     <?php
                 }
@@ -544,10 +574,10 @@ if ($settingsResult) {
         } else {
             ?>
             <h1 class="mt-2 head-update">Grades Management</h1>
-            <ol class="breadcrumb mb-4 small">
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                <li class="breadcrumb-item active">Grades Management</li>
-            </ol>
+            <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+    <li class="breadcrumb-item" style="color: #f8f9fa;"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+    <li class="breadcrumb-item active">Grades Management</li>
+</ol>
             <?php
             if (isset($_GET['msg'])) {
                 if ($_GET['msg'] == 'add') {
@@ -655,7 +685,6 @@ if ($settingsResult) {
                             <table class="table table-striped" id="gradesTable">
     <thead>
         <tr>
-            <th>Grade ID</th>
             <th>Student Name</th>
             <th>Grade (%)</th>
             <th>Academic Year</th>
@@ -731,8 +760,8 @@ if ($settingsResult) {
             $view_modal_label = "viewGradeModalLabel{$row['grade_id']}";
 
             echo "<tr>
-                <td>{$row['grade_id']}</td>
-                  <td>" . htmlspecialchars($row['student_name']) . ' (' . htmlspecialchars($row['student_number']) . ')' . "</td>
+               
+                 <td>" . htmlspecialchars($row['student_name']) . ' (' . htmlspecialchars($row['student_number']) . ')' . "</td>
                 <td>{$row['grade']}</td>
                 <td>{$row['academic_year']}</td>
                 <td>
@@ -743,7 +772,7 @@ if ($settingsResult) {
             if ($displayRole === 'Admin') {
                 echo "    <a href='grades.php?action=edit&id={$grade_id}' class='btn btn-warning btn-sm'>Edit</a>
                         <button type='button' class='btn btn-danger btn-sm' data-bs-toggle='modal' data-bs-target='#{$delete_modal_id}'>
-                            <i class='bi bi-trash'></i>
+                            <i class='bi bi-trash'></i> Delete
                         </button>
 
                         <!-- Modal for deleting a grade -->
@@ -835,7 +864,7 @@ if ($settingsResult) {
             
             <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs">
-                    Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
                 </div>
             </footer>
             </div>
@@ -848,6 +877,28 @@ if ($settingsResult) {
     </div>
 
     <script>
+        function searchGrades() {
+    var input, filter, table, rows, cells, i, j, match;
+    input = document.getElementById("searchBar");
+    filter = input.value.toLowerCase();
+    table = document.getElementById("gradesTable");
+    rows = table.getElementsByTagName("tr");
+
+    for (i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+        cells = rows[i].getElementsByTagName("td");
+        match = false;
+
+        for (j = 0; j < cells.length; j++) {
+            if (cells[j]) {
+                if (cells[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
+                    match = true;
+                }
+            }
+        }
+
+        rows[i].style.display = match ? "" : "none";
+    }
+}
         let sideBarOpen = false;
         let menuIcon = document.querySelector('.sidebar');
 

@@ -1,5 +1,22 @@
 <?php
+session_start();
 include('DB_connect.php'); // Include your database connection
+
+if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
+    // Store user role for easier access
+    $userRole = $_SESSION["role"];
+    $adminType = $_SESSION["admin_type"] ?? '';
+    $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
+    $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
+    // Map roles to display names
+    $roleNames = [
+        "1" => "Admin",
+        "2" => "Student",
+        "3" => "Parent"
+    ];
+    // Determine role name based on the session
+    $displayRole = $roleNames[$userRole] ?? 'Parent';
+  }
 
 // Check if the query parameter is set
 if (isset($_GET['query'])) {
@@ -7,30 +24,58 @@ if (isset($_GET['query'])) {
     if (!empty($query)) {
         // Prepare a SQL statement to search across multiple tables
         $stmt = $connect->prepare("
-            SELECT 'students' AS source, student_id AS id, student_name AS name, status As Info
-            FROM students
-            WHERE student_name LIKE ?
-            UNION
-            SELECT 'invoices' AS source, invoice_id AS id, CONCAT('Amount: ', total_amount, ', Status: ', status) AS name, NULL AS Info
-            FROM invoices
-            WHERE invoice_id LIKE ?
-            UNION
-            SELECT 'deposit' AS source, payment_id AS id, CONCAT('Payment Number: ', payment_number) AS name, CONCAT('Amount: ', total_amount, ', Status: ', status) AS Info
-            FROM deposit
-            WHERE payment_number LIKE ?
-            LIMIT 50
-        ");
+    SELECT 'deposit' AS source, 
+           d.payment_id AS id, 
+           CONCAT('Payment Number: ', d.payment_number, 'Student Name: ', s.student_name, ', Amount: ', d.total_amount, ', Status: ', d.status) AS name, 
+           CONCAT('Paid Amount: ', d.paid_amount, ', Remaining Amount: ', d.remaining_amount) AS info,
+           s.student_name AS additional_info
+    FROM deposit d
+    JOIN students s ON d.student_id = s.student_id
+    WHERE d.payment_number LIKE ?
+    
+    UNION
+    
+    SELECT 'students' AS source, 
+           s.student_id AS id, 
+           s.student_name AS name, 
+           s.status AS info, 
+           NULL AS additional_info
+    FROM students s
+    WHERE s.student_name LIKE ?
+    
+    UNION
+    
+    SELECT 'messages' AS source, 
+           id AS id, 
+           message AS name, 
+           status AS info, 
+           NULL AS additional_info
+    FROM messages
+    WHERE message LIKE ?
+    
+    UNION
+    
+    SELECT 'courses' AS source, 
+           course_id AS id, 
+           course_name AS name, 
+           course_fee AS info, 
+           NULL AS additional_info
+    FROM courses
+    WHERE course_name LIKE ?
+    
+    LIMIT 50
+");
 
-        if ($stmt) {
-            $likeQuery = '%' . $query . '%';
-            $stmt->bind_param('sss', $likeQuery, $likeQuery, $likeQuery);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $results = $result->fetch_all(MYSQLI_ASSOC);
-        } else {
-            echo 'Failed to prepare SQL statement.';
-            exit;
-        }
+if ($stmt) {
+    $likeQuery = '%' . $query . '%';
+    $stmt->bind_param('ssss', $likeQuery, $likeQuery, $likeQuery, $likeQuery);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $results = $result->fetch_all(MYSQLI_ASSOC);
+} else {
+    echo 'Failed to prepare SQL statement.';
+    exit;
+}
     } else {
         echo 'Search query is empty.';
         exit;
@@ -39,8 +84,34 @@ if (isset($_GET['query'])) {
     echo 'No search query provided.';
     exit;
 }
+$settingsQuery = "SELECT * FROM settings LIMIT 1";
+$settingsResult = $connect->query($settingsQuery);
 
-$connect->close();
+// Check if the query was successful
+if ($settingsResult) {
+    // Fetch the settings as an associative array
+    $settings = $settingsResult->fetch_assoc();
+
+    // Check if settings were retrieved
+    if ($settings) {
+        // Safely access the settings array
+        $systemName = htmlspecialchars($settings['system_name']);
+        
+    } else {
+        // Handle case when no settings are found
+        $systemName = 'AutoReceipt';  // Fallback value
+        
+        // Optionally log or display a message
+        error_log("No settings found in the database.");
+    }
+} else {
+    // Handle query failure
+    $systemName = 'AutoReceipt';  // Fallback value
+   
+    // Optionally log or display a message
+    error_log("Query failed: " . $connect->error);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -48,6 +119,8 @@ $connect->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Search</title>
+    <link id="theme-style" rel="stylesheet" href="css/<?= htmlspecialchars($theme); ?>.css">
+<link id="text-size-style" rel="stylesheet" href="css/<?= htmlspecialchars($text_size); ?>.css">
     <link rel="icon" href="logo2.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -86,7 +159,9 @@ $connect->close();
                             <i class="bi bi-person-fill"></i>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
+                        <?php if ($displayRole === 'Admin'): ?>
                             <li><a class="dropdown-item text-muted" href="settings.php">Settings</a></li>
+                            <?php endif; ?>
                             <li><a class="dropdown-item" href="profile.php">Profile</a></li>
                             <li><a class="dropdown-item" href="viewuser.php">User Information</a></li>
                             <li><hr class="dropdown-divider"></li>
@@ -101,9 +176,9 @@ $connect->close();
         <!--sidetag start-->
         <aside class="sidebar">
             <div class="sidebar-title">
-                <div class="sidebar-brand">
-                    <span class="material"> <bold class="change-color">A</bold>utoReceipt </span>
-                </div>
+            <div class="sidebar-brand">
+                <span class="material"> <bold class="change-color"><?php echo $systemName; ?></bold></span>
+            </div>
                 <span class="material-symbols-outlined" onclick="closeSideBar()">close</span>
             </div>
             <ul class="sidebar-list">
@@ -120,7 +195,7 @@ $connect->close();
                     role="button"
                     aria-expanded="false" 
                     aria-controls="collapseExample">
-                        <span class="material-symbols-outlined">dashboard</span> Fee Manager
+                        <span class="material-symbols-outlined">account_balance_wallet</span> Fees Manager
                         <span class="right-icon ms-2"><i class="bi bi-chevron-down"></i></span>
                     </a>
                 </li>
@@ -130,39 +205,33 @@ $connect->close();
                             <?php if ($displayRole === 'Admin'): ?>
                                 <li class="sidebar-list-item">
                                     <a href="Student.php" class="nav-link px-3">
-                                        <span><i class="bi bi-person-fill-add"></i></span>
+                                    <span class="material-symbols-outlined">person_add</span>
                                         <span>New Admission</span>
                                     </a>
                                 </li>
                                 <li class="sidebar-list-item">
                                     <a href="Student.php" class="nav-link px-3">
-                                        <span><i class="bi bi-person-fill-add"></i></span>
+                                    <span class="material-symbols-outlined">search</span>
                                         <span>Search Admission</span>
                                     </a>
                                 </li>
                             <?php endif; ?>
                             <li class="sidebar-list-item">
                                 <a href="deposit.php" class="nav-link px-3">
-                                    <span><i class="bi bi-cash"></i></span>
+                                <span class="material-symbols-outlined">payments</span>
                                     <span>Deposit Fees</span>
                                 </a>
                             </li>
                             <li class="sidebar-list-item">
                                 <a href="deposit.php" class="nav-link px-3">
-                                    <span><i class="bi bi-receipt"></i></span>
+                                <span class="material-symbols-outlined">receipt</span>
                                     <span>Generate Invoices</span>
                                 </a>
                             </li>
                             <?php if ($displayRole === 'Admin'): ?>
                                 <li class="sidebar-list-item">
-                                    <a href="#" class="nav-link px-3">
-                                        <span><i class="bi bi-printer"></i></span>
-                                        <span>Receipt Records</span>
-                                    </a>
-                                </li>
-                                <li class="sidebar-list-item">
-                                    <a href="fees.php" class="nav-link px-3">
-                                        <span><i class="bi bi-wallet"></i></span>
+                                    <a href="course.php" class="nav-link px-3">
+                                    <span class="material-symbols-outlined">print</span>
                                         <span>Manage Fees</span>
                                     </a>
                                 </li>
@@ -170,45 +239,63 @@ $connect->close();
                         </ul>
                     </div>
                 </div>
+                <?php if ($displayRole === 'Admin' || $displayRole === 'Student'): ?>
                 <li class="sidebar-list-item">
-                    <a class="nav-link px-3 mt-3 sidebar-link active" 
-                    data-bs-toggle="collapse" 
-                    href="#collapseReports" 
-                    role="button"
-                    aria-expanded="false" 
-                    aria-controls="collapseReports">
-                        <span class="material-symbols-outlined">dashboard</span> Reports
-                        <span class="right-icon ms-2"><i class="bi bi-chevron-down"></i></span>
-                    </a>
-                </li>
-                <div class="collapse" id="collapseReports">
-                    <div>
-                        <ul class="navbar-nav ps-3">
-                            <?php if ($displayRole === 'Admin'): ?>
-                                <li class="sidebar-list-item">
-                                    <a href="#" class="nav-link px-3">
-                                        <span><i class="bi bi-person-fill-add"></i></span>
-                                        <span>Records</span>
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <li class="sidebar-list-item">
-                                <a href="#" class="nav-link px-3">
-                                    <span><i class="bi bi-receipt"></i></span>
-                                    <span>Add Courses</span>
-                                </a>
-                            </li>
-                            <?php if ($displayRole === 'Admin'): ?>
-                                <li class="sidebar-list-item">
-                                    <a href="studententry.php" class="nav-link px-3">
-                                        <span><i class="bi bi-bell-fill"></i></span>
-                                        <span>Manage Users</span>
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                        </ul>
-                    </div>
-                </div>
+    <a class="nav-link px-3 mt-3 sidebar-link active" 
+       data-bs-toggle="collapse" 
+       href="#collapseReports" 
+       role="button"
+       aria-expanded="false" 
+       aria-controls="collapseReports">
+        <span class="material-symbols-outlined">admin_panel_settings</span> Management
+        <span class="right-icon ms-2"><i class="bi bi-chevron-down"></i></span>
+    </a>
+</li>
+<?php endif; ?>
+<div class="collapse" id="collapseReports">
+    <div>
+        <ul class="navbar-nav ps-3">
+           
+                <?php if ($displayRole === 'Admin'): ?>
+                    <li class="sidebar-list-item">
+                        <a href="parents.php" class="nav-link px-3">
+                        <span class="material-symbols-outlined">people</span>
+                            <span>Manage Parents</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-list-item">
+                        <a href="course.php" class="nav-link px-3">
+                        <span class="material-symbols-outlined">class</span>
+                            <span>Manage Courses</span>
+                        </a>
+                    </li>
+                    <?php if ($adminType === 'master'): ?>
+                    <li class="sidebar-list-item">
+                        <a href="studententry.php" class="nav-link px-3">
+                        <span class="material-symbols-outlined">admin_panel_settings</span>
+                            <span>Manage Users</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+                    <li class="sidebar-list-item">
+                        <a href="notify.php" class="nav-link px-3">
+                        <span class="material-symbols-outlined">notifications</span>
+                            <span>Reminders</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+
+                <?php if ($displayRole === 'Student' || $displayRole === 'Admin'): ?>
+                    <li class="sidebar-list-item">
+                        <a href="addcourse.php" class="nav-link px-3">
+                        <span class="material-symbols-outlined">add_circle</span>
+                            <span>Add Course</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+        </ul>
+    </div>
+</div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -216,7 +303,7 @@ $connect->close();
                     role="button"
                     aria-expanded="false" 
                     aria-controls="collapsePayments">
-                        <span class="material-symbols-outlined">dashboard</span>  Payments
+                        <span class="material-symbols-outlined">payments</span>  Payments
                         <span class="right-icon ms-2"><i class="bi bi-chevron-down"></i></span>
                     </a>
                 </li>
@@ -225,7 +312,7 @@ $connect->close();
                         <ul class="navbar-nav ps-3">
                             <li class="sidebar-list-item">
                                 <a href="payment.php" class="nav-link px-3">
-                                    <span><i class="bi bi-receipt"></i></span>
+                                <span class="material-symbols-outlined">history</span>
                                     <span>Payments History</span>
                                 </a>
                             </li>
@@ -234,18 +321,40 @@ $connect->close();
                     </div>
                 </div>
                 <li class="sidebar-list-item">
+                    <a href="grades.php" class="nav-link px-3 mt-3 active">
+                        <span class="material-symbols-outlined">grade</span> Grades
+                    </a>
+                </li>
+                <li class="sidebar-list-item">
+                    <a href="attendance.php" class="nav-link px-3 mt-3 active">
+                        <span class="material-symbols-outlined">calendar_today</span> Attendance
+                    </a>
+                </li>
+                <li class="sidebar-list-item">
+                    <a href="noticeboard.php" class="nav-link px-3 mt-3 active">
+                        <span class="material-symbols-outlined">announcement</span> NoticeBoard
+                    </a>
+                </li>
+                <?php if ($displayRole === 'Admin'|| $displayRole === 'Student'): ?>
+                <li class="sidebar-list-item">
+                    <a href="academicyears.php" class="nav-link px-3 mt-3 active">
+                        <span class="material-symbols-outlined">school</span> Academic Years
+                    </a>
+                </li>
+                <?php endif; ?>
+                <li class="sidebar-list-item">
                     <a href="profile.php" class="nav-link px-3 mt-3 active">
-                        <span class="material-symbols-outlined">dashboard</span> Update Profile
+                        <span class="material-symbols-outlined">person</span> Update Profile
                     </a>
                 </li>
                 <li class="sidebar-list-item">
                     <a href="updatepass.php" class="nav-link px-3 mt-3 active">
-                        <span class="material-symbols-outlined">dashboard</span> Update Password
+                        <span class="material-symbols-outlined">lock</span> Update Password
                     </a>
                 </li>
                 <li class="sidebar-list-item">
                     <a href="logout.php" class="nav-link px-3 mt-3 active" onclick="confirmLogout(event)">
-                        <span class="material-symbols-outlined">dashboard</span> Log Out
+                        <span class="material-symbols-outlined">logout</span> Log Out
                     </a>
                 </li>
             </ul>
@@ -276,7 +385,7 @@ $connect->close();
                             <td><?php echo htmlspecialchars($row['source']); ?></td>
                             <td><?php echo htmlspecialchars($row['id']); ?></td>
                             <td><?php echo htmlspecialchars($row['name']); ?></td>
-                            <td><?php echo htmlspecialchars($row['Info']); ?></td>
+                            <td><?php echo htmlspecialchars($row['info']); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>

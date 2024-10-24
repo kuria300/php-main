@@ -80,14 +80,22 @@ if (isset($_POST['action'])) {
     }
 
     if ($_POST['action'] == 'fetch_student') {
-        $query = "SELECT students.*, courses.course_name FROM students
-          LEFT JOIN courses ON students.course_id = courses.course_id";
-    
-        if (isset($_POST['search']['value']) && !empty($_POST['search']['value'])) {
-            $searchValue = $connect->real_escape_string($_POST['search']['value']);
-            $query .= 'WHERE student_number LIKE "%' . $searchValue . '%" 
-                        OR student_name LIKE "%' . $searchValue . '%"';
-        }
+        $query = "SELECT students.*, courses.course_name FROM students 
+        LEFT JOIN courses ON students.course_id = courses.course_id ";
+
+if (isset($_POST['search']['value']) && !empty($_POST['search']['value'])) {
+  $searchValue = $connect->real_escape_string($_POST['search']['value']);
+  
+  // Check if there's already a WHERE clause in the query
+  if (strpos($query, 'WHERE') !== false) {
+      $query .= ' AND (student_number LIKE "%' . $searchValue . '%" 
+                        OR student_name LIKE "%' . $searchValue . '%")';
+  } else {
+      $query .= 'WHERE (student_number LIKE "%' . $searchValue . '%" 
+                        OR student_name LIKE "%' . $searchValue . '%")';
+  }
+}
+
     
         if (isset($_POST['order'])) {
             $columnIndex = intval($_POST['order'][0]['column']);
@@ -271,72 +279,6 @@ if (isset($_POST['action'])) {
         echo json_encode($output);
     }
 
-    if ($_POST['action'] == 'fetch_receipt') {
-    
-        $query = "SELECT * FROM receipts ";
-    
-        if (isset($_POST['search']['value']) && !empty($_POST['search']['value'])) {
-            $searchValue = $connect->real_escape_string($_POST['search']['value']);
-            $query .= 'WHERE ReceiptID LIKE "%' . $searchValue . '%" 
-                        OR ReceiptDetails LIKE "%' . $searchValue . '%"';
-        }
-    
-        if (isset($_POST['order'])) {
-            $columnIndex = intval($_POST['order'][0]['column']);
-            $direction = $connect->real_escape_string($_POST['order'][0]['dir']);
-            $columns = ['ReceiptID', 'AccountID', 'TransactionID', 'TransactionDate', 'Amount', 'PaymentMethod', 'ReceiptDetails']; // Make sure this matches your DB columns
-            $orderByColumn = $columns[$columnIndex] ?? 'ReceiptID';
-            $query .= " ORDER BY $orderByColumn $direction ";
-        } else {
-            $query .= " ORDER BY ReceiptID DESC ";
-        }
-        if (isset($_POST['length']) && $_POST['length'] != -1) {
-            $start = intval($_POST['start']);
-            $length = intval($_POST['length']);
-            $query .= " LIMIT $start, $length";
-        }
-        // Execute the query
-        $result = $connect->query($query);
-    
-        if (!$result) {
-            echo json_encode(array("error" => $connect->error));
-            exit;
-        }
-    
-        // Get filtered row count
-        $filtered_rows = $result->num_rows;
-    
-        // Get total row count
-        $totalRows = get_total_receipt($connect);
-    
-        $data = array();
-        while ($row = $result->fetch_assoc()) {
-            $sub_array = array();
-
-            $sub_array[] = $row['ReceiptID'];
-            $sub_array[] = $row['AccountID'];
-            $sub_array[] = $row['TransactionID'];
-            $sub_array[] = $row['TransactionDate'];
-            $sub_array[] = $row['Amount'];
-            $sub_array[] = $row['PaymentMethod'];
-            $sub_array[] = $row['ReceiptDetails'];
-            $sub_array[] = '<span class="btn btn-sm btn-primary" onclick="window.location.href=\'fees.php?action=edit&id=' . $row['ReceiptID'] . '\'"><i class="bi bi-pen"></i></span> 
-                            <span class="btn btn-danger btn-sm" onclick="delete_data(\'' . $row['ReceiptID'] . '\')">
-                            <i class="bi bi-trash"></i></span>';
-            $data[] = $sub_array;
-        }
-    
-        // Output JSON
-        $output = array(
-            "draw" => intval($_POST['draw']),
-            'recordsTotal' => $totalRows,
-            'recordsFiltered' => $filtered_rows,
-            'data' => $data
-        );
-    
-        echo json_encode($output);
-    }
-
 }
 
 function get_total_users($connect) {
@@ -369,13 +311,4 @@ function get_total_fees($connect) {
     return $row['total'];
 }
 
-function get_total_receipt($connect) {
-    $query = "SELECT COUNT(*) as total FROM receipts";
-    $result = $connect->query($query);
-    if (!$result) {
-        die("Query failed: " . $connect->error);
-    }
-    $row = $result->fetch_assoc();
-    return $row['total'];
-}
 ?>

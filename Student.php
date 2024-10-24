@@ -432,10 +432,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
 
     // Check if the student ID is valid
     if ($student_id > 0) {
-        // Prepare SQL DELETE statement
-        $query = "DELETE FROM students WHERE student_id = ?";
+        // First, delete any related records in the enrollments table
+        $deleteEnrollmentsQuery = "DELETE FROM enrollments WHERE student_id = ?";
+        if ($enrollStmt = $connect->prepare($deleteEnrollmentsQuery)) {
+            $enrollStmt->bind_param('i', $student_id);
+            $enrollStmt->execute();
+            $enrollStmt->close();
+        }
 
-        if ($stmt = $connect->prepare($query)) {
+        // Prepare SQL DELETE statement for students
+        $deleteStudentQuery = "DELETE FROM students WHERE student_id = ?";
+        if ($stmt = $connect->prepare($deleteStudentQuery)) {
             // Bind the student ID parameter
             $stmt->bind_param('i', $student_id);
 
@@ -446,13 +453,43 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
                 exit();
             } else {
                 // Handle SQL execution error
-                echo "Error: Could not execute the query.";
+                echo "Error: Could not execute the delete query.";
             }
 
             // Close the statement
             $stmt->close();
+        } else {
+            echo "Error preparing delete statement.";
         }
+    } else {
+        echo "Invalid student ID.";
     }
+}
+
+$query = "";
+$imageField = "";
+
+if ($userRole === "1") { // Admin
+    $query = "SELECT * FROM admin_users WHERE admin_id = ?";
+    $imageField = 'admin_image';
+} elseif ($userRole === "2") { // Student
+    $query = "SELECT * FROM students WHERE student_id = ?";
+    $imageField = 'student_image';
+} else { // Parent
+    $query = "SELECT * FROM parents WHERE parent_id = ?";
+    $imageField = 'parent_image';
+}
+
+if ($stmt = $connect->prepare($query)) {
+    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $admin = $result->fetch_assoc(); // Fetch associative array
+    } else {
+        $admin = null; // Handle user not found case
+    }
+    $stmt->close();
 }
 // Fetch user preferences
   
@@ -543,8 +580,8 @@ if ($settingsResult) {
             <div class="header-right">
                 <ul class="navbar-nav mb-2 mb-lg-0">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-fill"></i>
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="upload/<?php echo htmlspecialchars($admin[$imageField] ?? 'default.jpg'); ?>" class="rounded-circle" name="image" alt="Profile Image" style="width: 48px; height: 48px; object-fit: cover;">
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                         <?php if ($displayRole === 'Admin'): ?>
@@ -759,9 +796,9 @@ if ($settingsResult) {
                       if($_GET['action']== 'add'){
                         ?>
                         <h1 class="mt-2 head-update">Student Management</h1>
-                         <ol class="breadcrumb mb-4 small">
-                            <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                            <li class="breadcrumb-item active"><a href="Student.php">Student Management</a></li>
+                         <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                            <li class="breadcrumb-item"><a href="dashboard.php"  style="color: #f8f9fa;">Dashboard</a></li>
+                            <li class="breadcrumb-item active"><a href="Student.php"  style="color: #f8f9fa;">Student Management</a></li>
                             <li class="breadcrumb-item active">Add Student</li>
                         </ol>
                         <?php
@@ -880,7 +917,7 @@ if ($settingsResult) {
 
                         <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs"> 
-                Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>  
               </footer>
                        <?php
                         
@@ -899,9 +936,9 @@ if ($settingsResult) {
                               if($user_row = $result->fetch_assoc()){
                                 ?>
                                  <h1 class="mt-2 head-update">Student Management</h1>
-                                    <ol class="breadcrumb mb-4 small">
-                                        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                        <li class="breadcrumb-item"><a href="Student.php">Student Management</a></li>
+                                    <ol class="breadcrumb mb-4 small"   style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                                        <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                                        <li class="breadcrumb-item"><a href="Student.php" style="color: #f8f9fa;">Student Management</a></li>
                                         <li class="breadcrumb-item active">Edit Student</a></li>
                                       </ol>
                                       <?php 
@@ -913,14 +950,14 @@ if ($settingsResult) {
                                                     <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?><br>
                                                 <?php endforeach; ?>
                                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                            </div>;
+                                            </div>
                                         <?php endif; ?>
 
                                         <?php if ($form_submitted && isset($message) && !empty($message) && empty($errors)): ?>
                                             <div class="alert alert-success alert-dismissible fade show" role="alert">
                                              <?php  echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
                                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                        </div>;
+                                        </div>
                                         <?php endif; ?>
                               <div class="row">
                                   <div class="col-md-12">
@@ -1032,7 +1069,7 @@ if ($settingsResult) {
                               </div>
                               <footer class="main-footer px-3">
                                           <div class="pull-right hidden-xs"> 
-                                          Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                                          <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>  
                                         </footer>
                                 <?php
                               }
@@ -1041,8 +1078,8 @@ if ($settingsResult) {
                   }else{
                     ?>
               <h1 class="mt-2 head-update">Student Management</h1>
-               <ol class="breadcrumb mb-4 small">
-                  <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+               <ol class="breadcrumb mb-4 small"  style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                  <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
                   <li class="breadcrumb-item active">Student Management</a></li>
                 </ol>
                 <?php
@@ -1102,7 +1139,7 @@ if ($settingsResult) {
         </div>
         <footer class="main-footer px-3">
                 <div class="pull-right hidden-xs"> 
-                Copyright © 2024-2025 <a href="#">AutoReceipt system</a>. All rights reserved  
+                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
               </footer>
         </main>
          <!--main-->
