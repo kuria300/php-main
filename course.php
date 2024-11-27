@@ -2,9 +2,7 @@
 session_start();
 include('DB_connect.php');
 
-include('res/functions.php');
  
-
 if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
     // Store user role for easier access
     
@@ -120,34 +118,40 @@ if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
         $connect->begin_transaction();
     
         try {
+            // First, delete any related records in the enrollments table
+            $deleteEnrollmentsQuery = "DELETE FROM enrollments WHERE course_id = ?";
+            $enrollStmt = $connect->prepare($deleteEnrollmentsQuery);
+            $enrollStmt->bind_param('i', $course_id);
     
-            // Prepare SQL statement to delete the course record
+            if (!$enrollStmt->execute()) {
+                throw new Exception("Error deleting related enrollments: " . $enrollStmt->error);
+            }
+    
+            // Next, prepare SQL statement to delete the course record
             $stmt_course = $connect->prepare("DELETE FROM courses WHERE course_id = ?");
             $stmt_course->bind_param("i", $course_id);
     
-            // Execute the statement
+            // Execute the statement for deleting the course
             if ($stmt_course->execute()) {
-                // Commit the transaction
+                // Commit the transaction if both delete operations are successful
                 $connect->commit();
                 // Redirect or provide success feedback
                 header('Location: course.php?msg=delete');
                 exit();
             } else {
-                // Handle SQL execution error
-                echo "<div class='alert alert-danger'>Error deleting course: " . $stmt_course->error . "</div>";
+                throw new Exception("Error deleting course: " . $stmt_course->error);
             }
     
             // Close the course statement
             $stmt_course->close();
+            $enrollStmt->close();
         } catch (Exception $e) {
             // Rollback the transaction in case of error
-            // Rollback the transaction in case of error
-        $connect->rollback();
-        // Store error message in session to display on redirect
-        $_SESSION['error_message'] = $e->getMessage();
-        // Redirect to the course page
-        header('Location: course.php?msg=error');
-        exit();
+            $connect->rollback();
+            // Store error message in session to display on redirect
+            $_SESSION['error_message'] = "You cannot delete this course because there are students enrolled in it. Please unenroll the students first.";
+            header('Location: course.php?msg=error');
+            exit();
         }
     }
 $queryAllCourses = "SELECT course_id, course_name FROM courses";
@@ -155,6 +159,7 @@ $resultAllCourses = $connect->query($queryAllCourses);
 
 $query = "";
 $imageField = "";
+$id=$_SESSION['id'];
 
 if ($userRole === "1") { // Admin
     $query = "SELECT * FROM admin_users WHERE admin_id = ?";
@@ -168,13 +173,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $id); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -407,10 +412,10 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
-                <li class="sidebar-list-item">
+               </ul>
+            </div>
+        </div>
+             <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
                     href="#collapsePayments" 
@@ -617,6 +622,12 @@ if ($settingsResult) {
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
+                if ($_GET['msg'] == 'erro2') {
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> Unenroll students first.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>';
+                }
                 if ($_GET['msg'] == 'error') {
                     // Display the error message if it exists in the session
                     if (isset($_SESSION['error_message'])) {
@@ -781,16 +792,15 @@ if ($connect instanceof mysqli) {
                             </li>
                         </ul>
                     </nav>
-    <?php
-
-    // Close statements
-    $stmt_total->close();
-    $stmt_courses->close();
-    $connect->close();
-} else {
-    echo '<p>Database connection error.</p>';
-}
-?>
+                 <?php
+                    // Close statements
+                    $stmt_total->close();
+                    $stmt_courses->close();
+                    $connect->close();
+                } else {
+                    echo '<p>Database connection error.</p>';
+                }
+                ?>
              </div>
             </div>
             </div>

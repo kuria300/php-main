@@ -1,25 +1,21 @@
 <?php
 session_start();
 include('DB_connect.php');
-
-include('res/functions.php');
  
 
 if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
-    // Store user role for easier access
     
     $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
     $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
     $userId= $_SESSION['id'];
     $userRole = $_SESSION["role"];
     $adminType = $_SESSION["admin_type"] ?? '';
-    // Map roles to display names
     $roleNames = [
         "1" => "Admin",
         "2" => "Student",
         "default" => "Parent"
     ];
-    // Determine role name based on the session
+  
     $displayRole = $roleNames[$userRole] ?? $roleNames["default"];
 }
 
@@ -48,7 +44,8 @@ if (isset($_GET['action'], $_GET['id'], $_GET['status']) && $_GET['action'] == '
         // Handle SQL execution failure
         echo "Failed to update status.";
     }
-}$query = "";
+}
+$query = "";
 $imageField = "";
 
 if ($userRole === "1") { // Admin
@@ -63,13 +60,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId);
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -145,6 +142,7 @@ if ($settingsResult) {
                 placeholder="search for..."
                 aria-label="search"
                 aria-describedby="button-addon2"
+                required
                 />
                 <button class="btn btn-success" type="submit" id="button-addon2"><i class="bi bi-search"></i></button>
               </div>
@@ -291,9 +289,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+             </ul>
+          </div>
+          </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -383,6 +381,12 @@ if ($settingsResult) {
                                 <i class="bi bi-check-circle"></i> User status ' . htmlspecialchars($messageType) . '
                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                               </div>';
+                    } elseif ($messageType === 'edit') {
+                        echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="bi bi-check-circle"></i> Successfully updated user Information
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                              </div>';
+                    
                     }
                 }
                 ?>

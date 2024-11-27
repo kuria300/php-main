@@ -84,6 +84,5 @@ $connect->close();
         </div>
     </footer></div>
   <!--footer-->
-    <script src="scriptz.js"></script>
 </body>
 </html>

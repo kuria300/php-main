@@ -1,8 +1,6 @@
 <?php
 include("DB_connect.php");
 session_start();
-
-include('res/functions.php');
  
 $message = $error = "";
 
@@ -53,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['course_id'])) {
                 $currentCourses = [];
             }
         }
-        // Check if the student is already enrolled in 3 courses
+        // Check if the student is already enrolled in 2 courses
         if (count($currentCourses) >= 2) {
             $error = "You cannot enroll in more than 2 courses.";
         } else {
@@ -113,6 +111,7 @@ $stmt->bind_param('i', $userId);
 $stmt->execute();
 $result = $stmt->get_result();
 
+
 $courseId = isset($_POST['course_id']) ? intval($_POST['course_id']) : 0;
 $studentId = isset($_POST['student_id']) ? intval($_POST['student_id']) : 0;
 
@@ -151,7 +150,7 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -380,9 +379,9 @@ $connect->close();
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+                    </ul>
+                </div>
+            </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -508,12 +507,23 @@ $connect->close();
                     </div>
                     <div class="card-body">
                         <?php
+                        include("DB_connect.php");
+                        $query = "
+                        SELECT c.course_id, c.course_name, c.course_number, c.course_fee
+                        FROM courses c
+                        INNER JOIN enrollments e ON c.course_id = e.course_id
+                        WHERE e.student_id = ?
+                    ";
+                    $stmt = $connect->prepare($query);
+                    $stmt->bind_param('i', $userId);
+                    $stmt->execute();
+                    $results = $stmt->get_result();
                         
-                        if ($result->num_rows > 0) {
+                        if ($results->num_rows > 0) {
                             echo '<table class="table table-bordered" id="courseTable">';
                             echo '<thead><tr><th>Course ID</th><th>Course Name</th><th>Course Number</th><th>Course Fee</th><th>Action</th></tr></thead><tbody>';
                             
-                            while ($row = $result->fetch_assoc()) {
+                            while ($row = $results->fetch_assoc()) {
                                 $course_id = htmlspecialchars($row['course_id']);
                                 $course_name = htmlspecialchars($row['course_name']);
                                 $course_number = htmlspecialchars($row['course_number']);
@@ -575,9 +585,9 @@ $connect->close();
                     </div>';
                 }
             }
-            ?>
-<div class="row">
-    <div class="col-md-12">
+        ?>
+      <div class="row">
+        <div class="col-md-12">
         <div class="card mb-4">
             <div class="card-header">
                 <span class="material-symbols-outlined">manage_accounts</span> Enrolled Courses List

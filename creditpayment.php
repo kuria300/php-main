@@ -31,14 +31,14 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
 $id = $_SESSION['id']; 
 
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_pay'])) {
 
    // Assuming this is used somewhere else for filtering
     
     $student_id = isset($_POST['student_id']) ? intval($_POST['student_id']) : 0;
 
     $payment_method = 'Credit card'; 
-
+    $course_id = isset($_POST['course_id']) ? intval($_POST['course_id']) : 0;
     $paid_amount = filter_input(INPUT_POST, 'paid_amount', FILTER_VALIDATE_FLOAT);
     $total_amount = filter_input(INPUT_POST, 'total_amount', FILTER_VALIDATE_FLOAT);
     $remaining_amount = isset($_POST['remaining_amount']) ? floatval($_POST['remaining_amount']) : 0;
@@ -98,11 +98,11 @@ $parent_stmt->close();
 
         
 
-$student_query = "SELECT parent_id FROM students WHERE student_id = ?";
+$student_query = "SELECT parent_id, course_id FROM students WHERE student_id = ?";
 $stmt = $connect->prepare($student_query);
 $stmt->bind_param('i',  $id);
 $stmt->execute();
-$stmt->bind_result($parents_id);
+$stmt->bind_result($parents_id, $courses_id);
 $stmt->fetch();
 $stmt->close();
 
@@ -132,13 +132,51 @@ if ($displayRole === 'Parent' || $displayRole === 'Admin') {
     // If role is not Student or Admin, set parentIdToBind to the current user id
     $studentIdToBind = $id; // Assuming $id is the student_id in this context
 }
+
+ // Check if previous payment exists
+ $previous_payment_query = "SELECT paid_amount, remaining_amount, status FROM deposit WHERE student_id = ? AND course_id = ? ORDER BY payment_date DESC LIMIT 1";
+ $stmt = $connect->prepare($previous_payment_query);
+ $stmt->bind_param('ii', $student_id, $course_id);
+ $stmt->execute();
+ $stmt->bind_result($previous_paid, $previous_remaining, $previous_status);
+ $stmt->fetch();
+ $stmt->close();
+
+ if ($previous_paid) {
+     // Update the paid amount and remaining balance based on previous payment
+     $new_paid_amount = $previous_paid + $paid_amount;
+     $new_remaining_amount = $total_amount - $new_paid_amount;
+
+     // Update the payment status based on new amounts
+     if ($new_paid_amount >= $total_amount) {
+         $new_status = 'Paid';
+     } elseif ($new_paid_amount > 0) {
+         $new_status = 'Pending';
+     } else {
+         $new_status = 'Unpaid';
+     }
+
+     // Update the deposit table with the new values
+     $update_query = "UPDATE deposit SET paid_amount = ?, remaining_amount = ?, status = ?, parent_name = ?, payment_date = NOW() WHERE student_id = ? AND course_id = ?";
+     $stmt = $connect->prepare($update_query);
+     $stmt->bind_param('ddssii', $new_paid_amount, $new_remaining_amount, $new_status, $parent_name, $student_id, $course_id);
+
+     if ($stmt->execute()) {
+         // Redirect with success message if update is successful
+         header('Location: deposit.php?msg=success');
+         exit();
+     } else {
+         echo "Error: " . $stmt->error;
+     }
+     $stmt->close();
+ }else{
 $payment_number = 'Credit Card Payment'; 
         // Insert payment details into the database
-    $query = "  INSERT INTO deposit (student_id, due_date, total_amount, paid_amount, payment_number, payment_method, status, payment_date, parent_id, parent_name, remaining_amount)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
+    $query = "  INSERT INTO deposit (student_id, due_date, total_amount, paid_amount, payment_number, payment_method, status, payment_date, parent_id, parent_name, remaining_amount, course_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)";
 
             if ($stmt = $connect->prepare($query)) {
-                $stmt->bind_param("isssssssss", $studentIdToBind, $due_date, $total_amount, $paid_amount, $payment_number, $payment_method, $status, $parentIdToBind, $parent_name, $remaining_amount);
+                $stmt->bind_param("isssssssssi", $studentIdToBind, $due_date, $total_amount, $paid_amount, $payment_number, $payment_method, $status, $parentIdToBind, $parent_name, $remaining_amount, $course_id);
 
                 if ($stmt->execute()) {
                     // Redirect to the same page with a success message
@@ -154,6 +192,7 @@ $payment_number = 'Credit Card Payment';
         echo '<p>Failed to prepare the SQL statement.</p>';
     }
 } 
+}
 
 
 
@@ -376,14 +415,14 @@ $courses[] = $row;
                 </div>
                 <input type="hidden" name="student_id" value="<?php echo htmlspecialchars($student_id); ?>">
                 <input type="hidden" name="parent_id" value="<?php echo htmlspecialchars($parent_id); ?>">
-                <div id="paypal-button-container"></div>
+                <div id="paypal-button-container" name="update_pay"></div>
                 <a href="deposit.php" class="btn btn-secondary" data-bs-dismiss="modal">Back</a>
                 </form>
             </div>
         </div>
     </div>
 </div>
-<script src="https://www.paypal.com/sdk/js?client-id=<?php echo htmlspecialchars($client_id); ?>&currency=USD"></script>
+<script src="https://www.paypal.com/sdk/js?client-id=<?php echo htmlspecialchars($client_id); ?>&currency=USD">/*This ID is required to authenticate your PayPal account.*/</script>
 </head>
     
     <script>

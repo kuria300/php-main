@@ -2,7 +2,17 @@
 session_start();
 include('DB_connect.php');
 
-include('res/functions.php');
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
+
  
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
    
@@ -58,9 +68,6 @@ while ($row = $result->fetch_assoc()) {
     $overduePayments[] = $row;
 }
 
-// Debugging output
-
-
 function getOverduePayments($connect) {
     $currentDate = date('Y-m-d');
     $query = "SELECT payment_id, student_id, total_amount ,paid_amount, due_date FROM deposit WHERE due_date < ? AND status = 'pending'";
@@ -74,7 +81,7 @@ function getOverduePayments($connect) {
         $overduePayments[] = $row;
     }
     return $overduePayments;
-    // Debugging output
+    
     echo '<pre>';
     print_r($overduePayments);
     echo '</pre>';
@@ -108,22 +115,22 @@ function sendReminder($connect, $payment, $student, $smtpDetails) {
     $dueDate = $payment['due_date'];
     $userId = $_SESSION['id']; 
     $userRole = $_SESSION['role'];
-    $message = "Dear " . ($student['student_id'] ? 'Student' : 'Parent') . 
-     "You have a payment of Ksh"  . number_format($amount, 2) .   " with an amount already paid of Ksh"  . number_format($paid_amount, 2) .  "due on $dueDate." . 
+    $message = "Dear Parent/Student, You have a payment of Ksh"  . number_format($amount, 2) .   " with an amount already paid of Ksh"  . number_format($paid_amount, 2) .  "due on $dueDate." . 
     "Please make sure to complete the payment before the due date to avoid any penalties. Thank you.";
 
   
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'eugenekuria66@gmail.com';
-        $mail->Password   = 'iqxl rubd okpk csun'; // Update with actual password
+        $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+        $mail->Password   = $_ENV['PASS']; // Use your app password (if 2FA is enabled)
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
+        $mail->Port       = $_ENV['PORT'];  // Use port 587
+    
 
-        $mail->setFrom('eugenekuria66@gmail.com', 'moses'); // Update with actual name
+        $mail->setFrom('eugenekuria66@gmail.com', 'moses'); 
         $mail->addAddress($email);
 
         $mail->isHTML(true);
@@ -335,13 +342,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null;
     }
     $stmt->close();
 }
@@ -579,10 +586,10 @@ $connect->close();
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
-                <li class="sidebar-list-item">
+            </ul>
+          </div>
+        </div>
+             <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
                     href="#collapsePayments" 
@@ -812,28 +819,28 @@ $connect->close();
                             <div class="card-body">
                                  <!-- Pagination Controls -->
                                  <nav aria-label="Page navigation">
-    <ul class="pagination">
-        <?php if ($current_page_reminders > 1): ?>
-            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders - 1; ?>">Previous</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Previous</span></li>
-        <?php endif; ?>
+                                    <ul class="pagination">
+                                        <?php if ($current_page_reminders > 1): ?>
+                                            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders - 1; ?>">Previous</a></li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                                        <?php endif; ?>
 
-        <?php for ($page = 1; $page <= $total_pages_reminders; $page++): ?>
-            <?php if ($page == $current_page_reminders): ?>
-                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
-            <?php else: ?>
-                <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $page; ?>"><?php echo $page; ?></a></li>
-            <?php endif; ?>
-        <?php endfor; ?>
+                                        <?php for ($page = 1; $page <= $total_pages_reminders; $page++): ?>
+                                            <?php if ($page == $current_page_reminders): ?>
+                                                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
+                                            <?php else: ?>
+                                                <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $page; ?>"><?php echo $page; ?></a></li>
+                                            <?php endif; ?>
+                                        <?php endfor; ?>
 
-        <?php if ($current_page_reminders < $total_pages_reminders): ?>
-            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders + 1; ?>">Next</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Next</span></li>
-        <?php endif; ?>
-    </ul>
-</nav>
+                                        <?php if ($current_page_reminders < $total_pages_reminders): ?>
+                                            <li class="page-item"><a class="page-link" href="?page_reminders=<?php echo $current_page_reminders + 1; ?>">Next</a></li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">Next</span></li>
+                                        <?php endif; ?>
+                                    </ul>
+                                </nav>
                                 <div class="table-responsive">
                                     <table class="table table-bordered" id="reminderTable">
                                         <thead>
@@ -929,28 +936,28 @@ $connect->close();
                             <div class="card-body">
                                 <h3>Overdue Payments</h3>
                                 <nav aria-label="Page navigation">
-    <ul class="pagination">
-        <?php if ($current_page_overdue > 1): ?>
-            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue - 1; ?>">Previous</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Previous</span></li>
-        <?php endif; ?>
+                                    <ul class="pagination">
+                                        <?php if ($current_page_overdue > 1): ?>
+                                            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue - 1; ?>">Previous</a></li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                                        <?php endif; ?>
 
-        <?php for ($page = 1; $page <= $total_pages_overdue; $page++): ?>
-            <?php if ($page == $current_page_overdue): ?>
-                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
-            <?php else: ?>
-                <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $page; ?>"><?php echo $page; ?></a></li>
-            <?php endif; ?>
-        <?php endfor; ?>
+                                        <?php for ($page = 1; $page <= $total_pages_overdue; $page++): ?>
+                                            <?php if ($page == $current_page_overdue): ?>
+                                                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
+                                            <?php else: ?>
+                                                <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $page; ?>"><?php echo $page; ?></a></li>
+                                            <?php endif; ?>
+                                        <?php endfor; ?>
 
-        <?php if ($current_page_overdue < $total_pages_overdue): ?>
-            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue + 1; ?>">Next</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Next</span></li>
-        <?php endif; ?>
-    </ul>
-</nav>
+                                        <?php if ($current_page_overdue < $total_pages_overdue): ?>
+                                            <li class="page-item"><a class="page-link" href="?page_overdue=<?php echo $current_page_overdue + 1; ?>">Next</a></li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">Next</span></li>
+                                        <?php endif; ?>
+                                    </ul>
+                                </nav>
                                 <div class="table-responsive">
                                     <table class="table table-bordered" id="paymentsTable">
                                         <thead>

@@ -20,7 +20,7 @@
      <div class="imageBox">
         <img src="login-logo.png" alt="Fee management">
         <div class="text-over">
-            <p>Welcome!</p>
+            <p>AutoReceipt!</p>
         </div>
      </div>
     <div class="contentBox">
@@ -36,9 +36,7 @@
     <form method="post" action="validate.php" class="form-admin">    
       <div class="mb-3">
         <label for="exampleInputEmail1" class="form-label">Email Required</label>
-        <input type="email" class="form-control" id="exampleInputEmail1" aria-describedby="emailHelp" 
-                      placeholder="Enter Email"
-                      name="name">
+        <input type="email" class="form-control" id="exampleInputEmail1" aria-describedby="emailHelp" placeholder="Enter Email" name="name">
         <div id="emailHelp" class="form-text">We'll never share your email with anyone else.</div>
       </div>
      <div class="mb-3">
@@ -65,9 +63,5 @@
      
    </div>
  </section>
-  <!--footer-->
-  
-  <!--footer-->
-    <script src="scriptz.js"></script>
 </body>
 </html>

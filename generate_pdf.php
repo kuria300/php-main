@@ -1,5 +1,5 @@
 <?php 
-require('C:\xampp\htdocs\sms\tcpdf\tcpdf.php'); // Adjust the path as needed
+require('C:\xampp\htdocs\sms\tcpdf\tcpdf.php'); 
 
 // Create new PDF document
 $pdf = new TCPDF();

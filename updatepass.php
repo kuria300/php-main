@@ -2,22 +2,20 @@
 include("DB_connect.php");
 session_start();
 
-include('res/functions.php');
  
 if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
-        // Store user role for easier access
-        
+       
         $userRole = $_SESSION["role"];
         $adminType = $_SESSION["admin_type"] ?? '';
         $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
         $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
-        // Map roles to display names
+        
         $roleNames = [
             "1" => "Admin",
             "2" => "Student",
             "3" => "Parent"
         ];
-        // Determine role name based on the session
+       
         $displayRole = $roleNames[$userRole] ?? 'Parent';
 }
 
@@ -97,13 +95,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -320,9 +318,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+               </ul>
+             </div>
+           </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 

@@ -10,8 +10,7 @@ if (isset($_GET['token'])) {
     $stmt = $connect->prepare($query);
     $stmt->bind_param('s', $token);
     $stmt->execute();
-    $stmt->store_result();
-    
+    $stmt->store_result();    
     
         // Form to reset password
         if (isset($_POST['update_password'])) {
@@ -91,22 +90,27 @@ if (isset($_GET['token'])) {
  </div>
     <section class="contact-us">
         <div class="form-container">
-        <?php
-    if (!empty($errors)) {
-        echo '<div class="error-messages">';
-        foreach ($errors as $error) {
-            echo "<p>$error</p>";
-        }
-        echo '</div>';
-    }
-
-    if (!empty($message)) {
-        echo "<p class='success-message'>$message</p>";
-    }
-    ?>
+       
 
     <form action="resetpass.php?token=<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>" method="post" class="form-contact">
-           
+    <?php
+   if (!empty($errors)) {
+    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
+    foreach ($errors as $error) {
+        echo "<p>$error</p>";
+    }
+    echo '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+    echo '</div>';
+}
+
+// Display success message in a success alert box with a close button and checkmark icon if available
+if (!empty($message)) {
+    echo "<div class='alert alert-success alert-dismissible fade show' role='alert'>
+            <p>$message</p>
+            <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+          </div>";
+}
+    ?>
                 <h3 class="mb-2 mt-2">Reset Password</h3>
                 <div class="mb-4 mt-4">
                     <label for="password" class="form-label">New Password</label>

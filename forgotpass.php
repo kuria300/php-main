@@ -1,6 +1,17 @@
 <?php 
 include('DB_connect.php');
 
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
+
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/PHPMailer.php');
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/Exception.php');
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/SMTP.php');
@@ -52,19 +63,20 @@ if (isset($_POST['reset_password'])) {
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
-                $mail->Host       = 'smtp.gmail.com';
+                $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'eugenekuria66@gmail.com';
-                $mail->Password   = 'iqxl rubd okpk csun';
+                $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+                $mail->Password   = $_ENV['PASS']; 
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port       = 587;
+                $mail->Port       = $_ENV['PORT'];  // Use port 587
+            
 
                 $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
                 $mail->addAddress($email);
 
                 $mail->isHTML(true);
                 $mail->Subject = 'Password Reset Request';
-                $mail->Body    = "To reset your password, please click the following link: <a href='http://localhost/sms/resetpass.php?token=$token'>Reset Password</a>";
+                $mail->Body    = "To reset your password, please click the following link: <a href=' https://02f6-102-0-5-84.ngrok-free.app/sms/resetpass.php?token=$token'>Reset Password</a>";
 
                 $mail->send();
                 $message = "A password reset link has been sent to your email.";
@@ -129,7 +141,7 @@ $connect->close();
      <!--Navbar-->
      <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="change-color"><?php echo $systemName; ?></bold></span></a>
+            <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="color-2"><?php echo $systemName; ?></bold></span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -170,14 +182,12 @@ $connect->close();
                 </div>
             </form>
       </div>
+    
+ <div class="credit"><p>&copy; <?php echo date('Y'); ?> <?php echo $systemName; ?></a>. All rights reserved.</p></div>
+ 
       </section>
     
 <!--form control contact us-->
 
-<footer class="main-footer px-3">
-                <div class="pull-right hidden-xs">
-                <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
-                </div>
-            </footer>
 </body>
 </html>

@@ -1,12 +1,11 @@
 <?php
-include('DB_connect.php'); // Ensure this file contains the database connection
-
+include('DB_connect.php');
 // Check if the student ID is set and valid
 if (isset($_GET['student_id']) && !empty($_GET['student_id'])) {
     $student_id = intval($_GET['student_id']);
 
     // Prepare the query to fetch the payment number for the student
-    $query = "SELECT student_contact_number1 FROM students WHERE student_id = ?"; // Adjust the query based on your table and requirements
+    $query = "SELECT student_contact_number1 FROM students WHERE student_id = ?"; 
     $stmt = $connect->prepare($query);
 
     if ($stmt) {

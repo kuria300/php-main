@@ -21,17 +21,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact'])) {
         $errors[] = "Invalid name. Only letters and spaces are allowed.";
     }
 
-    // Validate comment (ensure it's not empty)
+    // Validate comment
     if (empty($comment)) {
         $errors[] = "Comment cannot be empty.";
     }
 
-    // If there are errors, handle them (e.g., display them to the user)
-    if (!empty($errors)) {
-        // Display errors
-        foreach ($errors as $error) {
-            echo "<div class='alert alert-danger' role='alert'>$error</div>";
-        }
+   
+    $errorMessages = '';
+if (!empty($errors)) {
+    $errorMessages = '<div class="alert alert-danger alert-dismissible fade show" role="alert">';  
+    // Loop through each error and add it to the errorMessages variable
+    foreach ($errors as $error) {
+        $errorMessages .= "<p>{$error}</p>";
+    }   
+    // Add the close button to the alert
+    $errorMessages .= '
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>';
     } else {
         // Prepare the SQL statement
         $query = "INSERT INTO contact_form (name, email, comment) VALUES (?, ?, ?)";
@@ -50,11 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact'])) {
             $message = "<div class='alert alert-danger' role='alert'>There was a problem saving your message. Please try again later.</div>";
         }
 
-        // Close the statement
+        
         $stmt->close();
     }
 
-    // Close the database connection
 }
 
 $settingsQuery = "SELECT * FROM settings LIMIT 1";
@@ -107,7 +112,7 @@ $connect->close();
      <!--Navbar-->
      <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="change-color"><?php echo $systemName; ?></bold></span></a>
+            <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="color-2"><?php echo $systemName; ?></bold></span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -130,13 +135,9 @@ $connect->close();
      <section class="contact-us">
      <div class="form-container">
     <form action="contact.php" method="POST" class="form-contact">
-    <?php if (!empty($errors)): ?>
-                <div class="alert alert-danger" role="alert">
-                    <?php foreach ($errors as $error): ?>
-                        <p><?php echo $error; ?></p>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+    <?php if (!empty($errorMessages)): ?>
+           <?php echo $errorMessages; ?>
+    <?php endif; ?>
         <h3 class="mb-2 mt-2">How Can we Help You?</h3>
       <div class="mb-4 mt-4">
        <label for="exampleFormControlInput1" class="form-label">Email address<span>*</span></label>
@@ -160,7 +161,7 @@ $connect->close();
 <!--form control contact us-->
 
  <section>
- <div class="credit"><p>&copy; 2023 <?php echo $systemName; ?>. All rights reserved.</p></div>
+ <div class="credit"><p>&copy; <?php echo date('Y'); ?> <?php echo $systemName; ?></a>. All rights reserved.</p></div>
  </section>
 
  

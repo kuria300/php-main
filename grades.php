@@ -2,8 +2,7 @@
 session_start();
  include('DB_connect.php');
 
- include('res/functions.php');
- 
+
  if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
     exit;
@@ -334,9 +333,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+                </ul>
+            </div>
+        </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 

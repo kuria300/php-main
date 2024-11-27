@@ -2,13 +2,21 @@
 session_start();
  include('DB_connect.php');
 
- include('res/functions.php');
- 
+ require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
+
 if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
     exit;
 }
-
 
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     // Store user role for easier access
@@ -66,13 +74,11 @@ if (isset($_POST['add_parent'])) {
 
     if (!empty($errors)) {
         // Convert errors array to a query string format
-        $errorMessages = urlencode(implode('; ', $errors)); // Use semicolon to separate messages
+        $errorMessages = urlencode(implode('; ', $errors)); 
     
-        header('Location: parents.php?msg=error&errors=' . $errorMessages); // Redirect with query parameters
+        header('Location: parents.php?msg=error&errors=' . $errorMessages); 
         exit();
     }
-
-
 
     // Handle image upload
     if (!empty($_FILES['parent_image']['name'])) {
@@ -120,7 +126,7 @@ INSERT INTO parents (
 
 // Bind parameters with the correct types
 $stmt->bind_param(
-'sssssss', // Types: s for string
+'sssssss',
 $formdata['parent_name'],
 $formdata['parent_email'],
 $formdata['parent_address'],
@@ -134,13 +140,14 @@ $formdata['parent_sex']
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
-                $mail->Host       = 'smtp.gmail.com';  // Set the SMTP server to send through
+                $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'eugenekuria66@gmail.com'; // SMTP username
-                $mail->Password   = 'iqxl rubd okpk csun'; // SMTP password
+                $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+                $mail->Password   = $_ENV['PASS']; 
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port       = 587;
-
+                $mail->Port       = $_ENV['PORT'];  // Use port 587
+            
+        
                 // Recipients
                 $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
                 $mail->addAddress($formdata['parent_email'], $formdata['parent_name']);
@@ -153,7 +160,7 @@ $formdata['parent_sex']
                 $mail->send();
             } catch (Exception $e) {
                 if (strpos($mail->ErrorInfo, 'address couldn\'t be found') === false) {
-                    // Log or handle only if it's not a specific type of error
+                   
                     error_log("Mail Error: {$mail->ErrorInfo}");
                 }
             }
@@ -287,12 +294,13 @@ if ($form_submitted) {
                     $mail = new PHPMailer(true);
                     try {
                         $mail->isSMTP();
-                        $mail->Host       = 'smtp.gmail.com';  // Set the SMTP server to send through
+                        $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
                         $mail->SMTPAuth   = true;
-                        $mail->Username   = 'eugenekuria66@gmail.com'; // SMTP username
-                        $mail->Password   = 'iqxl rubd okpk csun'; // SMTP password
+                        $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+                        $mail->Password   = $_ENV['PASS']; // Use your app password (if 2FA is enabled)
                         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                        $mail->Port       = 587;
+                        $mail->Port       = $_ENV['PORT'];  // Use port 587
+                    
 
                         // Recipients
                         $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
@@ -306,7 +314,7 @@ if ($form_submitted) {
                         $mail->send();
                     } catch (Exception $e) {
                         if (strpos($mail->ErrorInfo, 'address couldn\'t be found') === false) {
-                            // Log or handle only if it's not a specific type of error
+                           
                             error_log("Mail Error: {$mail->ErrorInfo}");
                         }
                     }
@@ -331,22 +339,63 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
         exit();
     }
 
-    // Prepare SQL statement to delete the parent record
-    $stmt = $connect->prepare("DELETE FROM parents WHERE parent_id = ?");
-    $stmt->bind_param("i", $parent_id);
+    // Check if there are students associated with this parent
+    $checkStudentsQuery = "SELECT COUNT(*) FROM students WHERE parent_id = ?";
+    $checkStmt = $connect->prepare($checkStudentsQuery);
+    $checkStmt->bind_param('i', $parent_id);
+    $checkStmt->execute();
+    $checkStmt->bind_result($studentCount);
+    $checkStmt->fetch();
+    $checkStmt->close();
 
-    // Execute the statement
-    if ($stmt->execute()) {
-        // Redirect or provide success feedback
-        header('Location: parents.php?msg=delete');
+    // If there are students, show an error message
+    if ($studentCount > 0) {
+        $_SESSION['error_message'] = 'You cannot delete this parent because there are students associated with them. Please remove or update the related student records first.';
+        header('Location: parents.php?msg=error');
         exit();
-    } else {
-        // Handle SQL execution error
-        echo "<div class='alert alert-danger'>Error: " . $stmt->error . "</div>";
     }
 
-    // Close the statement
-    $stmt->close();
+    // Begin a transaction
+    $connect->begin_transaction();
+
+    try {
+        // First, delete any related records in the deposit table
+        $deleteDepositsQuery = "DELETE FROM deposit WHERE parent_id = ?";
+        $depositStmt = $connect->prepare($deleteDepositsQuery);
+        $depositStmt->bind_param('i', $parent_id);
+
+        if (!$depositStmt->execute()) {
+            throw new Exception("Error deleting related deposits: " . $depositStmt->error);
+        }
+
+        // Next, delete the parent record
+        $deleteParentQuery = "DELETE FROM parents WHERE parent_id = ?";
+        $parentStmt = $connect->prepare($deleteParentQuery);
+        $parentStmt->bind_param('i', $parent_id);
+
+        if ($parentStmt->execute()) {
+            // Commit the transaction if both delete operations are successful
+            $connect->commit();
+            // Redirect or provide success feedback
+            header('Location: parents.php?msg=delete');
+            exit();
+        } else {
+            throw new Exception("Error deleting parent: " . $parentStmt->error);
+        }
+
+        // Close the statements
+        $parentStmt->close();
+        $depositStmt->close();
+    } catch (Exception $e) {
+        // Rollback the transaction in case of error
+        $connect->rollback();
+        // Set the error message in the session to be displayed
+        $_SESSION['error_message'] = $e->getMessage();
+    
+        // Redirect to the parents page with error message
+        header('Location: parents.php?msg=error');
+        exit();
+    }
 }
 function generateFakeEmail($baseName) {
     // Define an array of domains
@@ -381,7 +430,7 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -600,9 +649,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+              </ul>
+             </div>
+           </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -722,7 +771,7 @@ if ($settingsResult) {
                 <?php
             } else if ($_GET['action'] == 'edit') {
                 if (isset($_GET['id'])) {
-                    $parent_id = intval($_GET['id']); // Ensure student_id is an integer
+                    $parent_id = intval($_GET['id']); 
 
                     // Prepare and execute the query
                     $stmt = $connect->prepare("SELECT * FROM parents WHERE parent_id = ?");
@@ -741,13 +790,13 @@ if ($settingsResult) {
                     <li class="breadcrumb-item active">Edit Parent</li>
                 </ol>
                 <?php if (!empty($errors)): ?>
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <?php foreach ($errors as $error): ?>
-            <div><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
-        <?php endforeach; ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-<?php endif; ?>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <?php foreach ($errors as $error): ?>
+                            <div><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
+                        <?php endforeach; ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
                     <div class="row">
                         <div class="col-md-12">
                             <div class="card mb-4">
@@ -833,14 +882,17 @@ if ($settingsResult) {
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>';
                 }
-                if ($_GET['msg'] === 'error' && isset($_GET['errors'])) {
-                    // Decode and display error messages
-                    $errors = urldecode($_GET['errors']);
-                    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
-                    echo '<i class="bi bi-exclamation-circle"></i> ' . htmlspecialchars($errors);
-                    echo '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
-                    echo '</div>';
-                } 
+               
+                if ($_GET['msg'] == 'error') {
+                    if (isset($_SESSION['error_message'])) {
+                        echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="bi bi-x-circle"></i> ' . htmlspecialchars($_SESSION['error_message']) . '
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>';
+                        
+                        unset($_SESSION['error_message']); // Clear the message after displaying
+                    }
+                }
                 if ($_GET['msg'] == 'delete') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
                         <i class="bi bi-check-circle"></i>Successfully Deleted Parent.
@@ -881,9 +933,9 @@ if ($settingsResult) {
                         <input type="text" class="form-control" id="parentName" name="parent_name" placeholder="Enter FullName">
                     </div>
                     <div class="mb-3">
-    <label for="parentEmail" class="form-label">Email</label>
-    <input type="email" class="form-control" id="parentEmail" name="parent_email" value="<?php echo htmlspecialchars($parentEmail); ?>" readonly>
-</div>
+                        <label for="parentEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="parentEmail" name="parent_email" value="<?php echo htmlspecialchars($parentEmail); ?>">
+                    </div>
                     <div class="mb-3">
                         <label for="parentAddress" class="form-label">Address</label>
                         <input type="text" class="form-control" id="parentAddress" name="parent_address" placeholder="Enter Address" >
@@ -911,170 +963,169 @@ if ($settingsResult) {
                     </div>
                     <button type="submit" class="btn btn-primary" name="add_parent" value="Add">Add Parent</button>
                 </form>
+              </div>
+              </div>
             </div>
-        </div>
-    </div>
-</div>
-        </div>
-        </div>
-        
-                <div class="table-responsive">
+           </div>
+         </div>
+         </div>
+             <div class="table-responsive">
                     <div class="card-body">
                         <!-- Invoices Section -->
                         <div class="invoices-section mt-1 mb-2">
                             <h3>Parents</h3>
                             <?php
-// Include database connection
-include('DB_connect.php');
+                        // Include database connection
+                        include('DB_connect.php');
 
 
-// Number of items per page
-$items_per_page = 10;
-$current_page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$offset = ($current_page - 1) * $items_per_page;
+                        // Number of items per page
+                        $items_per_page = 10;
+                        $current_page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+                        $offset = ($current_page - 1) * $items_per_page;
 
-if ($connect instanceof mysqli) {
-    // Get total records for pagination
-    $stmt_total = $connect->prepare("
-        SELECT COUNT(*) AS total_records
-        FROM parents
-    ");
-    $stmt_total->execute();
-    $result_total = $stmt_total->get_result();
-    $total_records = $result_total->fetch_assoc()['total_records'];
-    $total_pages = ceil($total_records / $items_per_page);
+                        if ($connect instanceof mysqli) {
+                            // Get total records for pagination
+                            $stmt_total = $connect->prepare("
+                                SELECT COUNT(*) AS total_records
+                                FROM parents
+                            ");
+                            $stmt_total->execute();
+                            $result_total = $stmt_total->get_result();
+                            $total_records = $result_total->fetch_assoc()['total_records'];
+                            $total_pages = ceil($total_records / $items_per_page);
 
-    // Prepare SQL query to fetch parent data with pagination
-    $stmt_parents = $connect->prepare("
-        SELECT parent_id, parent_image, parent_name, parent_email, parent_address, parent_date_of_birth, parent_sex, parent_added_on, parent_updated_on
-        FROM parents
-        LIMIT ? OFFSET ?
-    ");
-    $stmt_parents->bind_param("ii", $items_per_page, $offset);
-    $stmt_parents->execute();
-    $result = $stmt_parents->get_result();
+                            // Prepare SQL query to fetch parent data with pagination
+                            $stmt_parents = $connect->prepare("
+                                SELECT parent_id, parent_image, parent_name, parent_email, parent_address, parent_date_of_birth, parent_sex, parent_added_on, parent_updated_on
+                                FROM parents
+                                LIMIT ? OFFSET ?
+                            ");
+                            $stmt_parents->bind_param("ii", $items_per_page, $offset);
+                            $stmt_parents->execute();
+                            $result = $stmt_parents->get_result();
 
-    if ($result->num_rows > 0) {
-        echo '<table class="table table-bordered" id="parentTable">';
-        echo '<thead><tr><th>Image</th><th>Parent Name</th><th>Email</th><th>Address</th><th>Date of Birth</th><th>Sex</th><th>Added On</th><th>Updated On</th><th>Action</th></tr></thead><tbody>';
-        
-        while ($row = $result->fetch_assoc()) {
-            $parent_id = htmlspecialchars($row['parent_id']);
-            $parent_name = htmlspecialchars($row['parent_name']);
-            $parent_email = htmlspecialchars($row['parent_email']);
-            $parent_address = htmlspecialchars($row['parent_address']);
-            $parent_date_of_birth = htmlspecialchars($row['parent_date_of_birth']);
-          
-            $parent_sex = htmlspecialchars($row['parent_sex']);
-            $parent_added_on = htmlspecialchars($row['parent_added_on']);
-            $parent_updated_on = htmlspecialchars($row['parent_updated_on']);
+                            if ($result->num_rows > 0) {
+                                echo '<table class="table table-bordered" id="parentTable">';
+                                echo '<thead><tr><th>Image</th><th>Parent Name</th><th>Email</th><th>Address</th><th>Date of Birth</th><th>Sex</th><th>Added On</th><th>Updated On</th><th>Action</th></tr></thead><tbody>';
+                                
+                                while ($row = $result->fetch_assoc()) {
+                                    $parent_id = htmlspecialchars($row['parent_id']);
+                                    $parent_name = htmlspecialchars($row['parent_name']);
+                                    $parent_email = htmlspecialchars($row['parent_email']);
+                                    $parent_address = htmlspecialchars($row['parent_address']);
+                                    $parent_date_of_birth = htmlspecialchars($row['parent_date_of_birth']);
+                                
+                                    $parent_sex = htmlspecialchars($row['parent_sex']);
+                                    $parent_added_on = htmlspecialchars($row['parent_added_on']);
+                                    $parent_updated_on = htmlspecialchars($row['parent_updated_on']);
 
-            $parent_image = !empty($row["parent_image"]) ? '<img src="upload/' . htmlspecialchars($row["parent_image"], ENT_QUOTES, 'UTF-8') . '" width="50"/>' : 'No Image';
+                                    $parent_image = !empty($row["parent_image"]) ? '<img src="upload/' . htmlspecialchars($row["parent_image"], ENT_QUOTES, 'UTF-8') . '" width="50"/>' : 'No Image';
 
-            echo '<tr>';
-            echo '<td>' . $parent_image . '</td>';
-            echo '<td>' . $parent_name . '</td>';
-            echo '<td>' . $parent_email . '</td>';
-            echo '<td>' . $parent_address . '</td>';
-            echo '<td>' . $parent_date_of_birth . '</td>';
-            echo '<td>' . $parent_sex . '</td>';
-            echo '<td>' . $parent_added_on . '</td>';
-            echo '<td>' . $parent_updated_on . '</td>';
-            echo '<td>
-                <div class="btn-group" role="group" aria-label="Actions">
-                    <!-- View Button -->
-                    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#viewParentModal' . $parent_id . '">
-                        <i class="bi bi-eye"></i> View
-                    </button>
-                    
-                    <a href="parents.php?action=edit&id=' . $parent_id . '" class="btn btn-info btn-sm ms-2 me-2">
-                        <i class="bi bi-pencil"></i> Edit
-                    </a>
+                                    echo '<tr>';
+                                    echo '<td>' . $parent_image . '</td>';
+                                    echo '<td>' . $parent_name . '</td>';
+                                    echo '<td>' . $parent_email . '</td>';
+                                    echo '<td>' . $parent_address . '</td>';
+                                    echo '<td>' . $parent_date_of_birth . '</td>';
+                                    echo '<td>' . $parent_sex . '</td>';
+                                    echo '<td>' . $parent_added_on . '</td>';
+                                    echo '<td>' . $parent_updated_on . '</td>';
+                                    echo '<td>
+                                        <div class="btn-group" role="group" aria-label="Actions">
+                                            <!-- View Button -->
+                                            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#viewParentModal' . $parent_id . '">
+                                                <i class="bi bi-eye"></i> View
+                                            </button>
+                                            
+                                            <a href="parents.php?action=edit&id=' . $parent_id . '" class="btn btn-info btn-sm ms-2 me-2">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </a>
 
-                    <!-- Delete Button -->
-                    <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteParentModal' . $parent_id . '">
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
+                                            <!-- Delete Button -->
+                                            <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteParentModal' . $parent_id . '">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
 
-                    <!-- View Parent Modal -->
-                    <div class="modal fade" id="viewParentModal' . $parent_id . '" tabindex="-1" aria-labelledby="viewParentModalLabel' . $parent_id . '" aria-hidden="true">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="viewParentModalLabel' . $parent_id . '">Parent Details</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <p><strong>Parent ID:</strong> ' . $parent_id . '</p>
-                                    <p><strong>Parent Name:</strong> ' . $parent_name . '</p>
-                                    <p><strong>Email:</strong> ' . $parent_email . '</p>
-                                    <p><strong>Address:</strong> ' . $parent_address . '</p>
-                                    <p><strong>Date of Birth:</strong> ' . $parent_date_of_birth . '</p>
-                                    <p><strong>Image:</strong> ' .$parent_image. '</p>
-                                    <p><strong>Sex:</strong> ' . $parent_sex . '</p>
-                                    <p><strong>Added On:</strong> ' . $parent_added_on . '</p>
-                                    <p><strong>Updated On:</strong> ' . $parent_updated_on . '</p>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                                            <!-- View Parent Modal -->
+                                            <div class="modal fade" id="viewParentModal' . $parent_id . '" tabindex="-1" aria-labelledby="viewParentModalLabel' . $parent_id . '" aria-hidden="true">
+                                                <div class="modal-dialog modal-lg">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title" id="viewParentModalLabel' . $parent_id . '">Parent Details</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <p><strong>Parent ID:</strong> ' . $parent_id . '</p>
+                                                            <p><strong>Parent Name:</strong> ' . $parent_name . '</p>
+                                                            <p><strong>Email:</strong> ' . $parent_email . '</p>
+                                                            <p><strong>Address:</strong> ' . $parent_address . '</p>
+                                                            <p><strong>Date of Birth:</strong> ' . $parent_date_of_birth . '</p>
+                                                            <p><strong>Image:</strong> ' .$parent_image. '</p>
+                                                            <p><strong>Sex:</strong> ' . $parent_sex . '</p>
+                                                            <p><strong>Added On:</strong> ' . $parent_added_on . '</p>
+                                                            <p><strong>Updated On:</strong> ' . $parent_updated_on . '</p>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
 
-                    <!-- Delete Parent Modal -->
-                    <div class="modal fade" id="deleteParentModal' . $parent_id . '" tabindex="-1" aria-labelledby="deleteParentModalLabel' . $parent_id . '" aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="deleteParentModalLabel' . $parent_id . '">Confirm Delete</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    Are you sure you want to delete this parent record?
-                                </div>
-                                <div class="modal-footer">
-                                    <form action="parents.php?action=delete" method="post">
-                                     <input type="hidden" name="parent_id" value="'.$parent_id.'">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="submit" name="delete_parent" class="btn btn-danger">Delete</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </td>';
-            echo '</tr>';
-        }
-        
-        echo '</tbody></table>';
-    } else {
-        echo '<p>No parents found.</p>';
-    }
-} else {
-    echo '<p>Database connection error.</p>';
-}
-?>
-<nav aria-label="Page navigation">
-    <ul class="pagination">
-        <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
-            <a class="page-link" href="?page=<?php echo ($current_page - 1); ?>" aria-label="Previous">
-                <span aria-hidden="true">Previous</span>
-            </a>
-        </li>
-        <?php for ($i = 1; $i <= $total_pages; $i++) { ?>
-            <li class="page-item <?php echo ($current_page == $i) ? 'active' : ''; ?>">
-                <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
-            </li>
-        <?php } ?>
-        <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
-            <a class="page-link" href="?page=<?php echo ($current_page + 1); ?>" aria-label="Next">
-                <span aria-hidden="true">Next</span>
-            </a>
-        </li>
-    </ul>
-</nav>
+                                            <!-- Delete Parent Modal -->
+                                            <div class="modal fade" id="deleteParentModal' . $parent_id . '" tabindex="-1" aria-labelledby="deleteParentModalLabel' . $parent_id . '" aria-hidden="true">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title" id="deleteParentModalLabel' . $parent_id . '">Confirm Delete</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            Are you sure you want to delete this parent record?
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <form action="parents.php?action=delete" method="post">
+                                                            <input type="hidden" name="parent_id" value="'.$parent_id.'">
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                                <button type="submit" name="delete_parent" class="btn btn-danger">Delete</button>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>';
+                                    echo '</tr>';
+                                }
+                                
+                                echo '</tbody></table>';
+                            } else {
+                                echo '<p>No parents found.</p>';
+                            }
+                        } else {
+                            echo '<p>Database connection error.</p>';
+                        }
+                        ?>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination">
+                                <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo ($current_page - 1); ?>" aria-label="Previous">
+                                        <span aria-hidden="true">Previous</span>
+                                    </a>
+                                </li>
+                                <?php for ($i = 1; $i <= $total_pages; $i++) { ?>
+                                    <li class="page-item <?php echo ($current_page == $i) ? 'active' : ''; ?>">
+                                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                                    </li>
+                                <?php } ?>
+                                <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo ($current_page + 1); ?>" aria-label="Next">
+                                        <span aria-hidden="true">Next</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
                         </div>
                     </div>
                 </div>

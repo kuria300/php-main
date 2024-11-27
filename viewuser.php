@@ -2,14 +2,10 @@
 session_start();
 include('DB_connect.php');
 
-include('res/functions.php');
- 
-
 if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
     exit;
 }
-
 
 $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
 $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
@@ -56,13 +52,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $admin_id); // "i" for integer type
+    $stmt->bind_param("i", $admin_id); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -287,9 +283,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+             </ul>
+          </div>
+           </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 

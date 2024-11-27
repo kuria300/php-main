@@ -11,8 +11,17 @@ use PHPMailer\PHPMailer\Exception;
 // Include database connection
 include('DB_connect.php');
 
-// Start session
 session_start();
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
 
 // Check session for student ID
 if (!isset($_SESSION['id'])) {
@@ -54,7 +63,7 @@ $pdf->AddPage();
 // Title styling
 $title = '<span style="color: #800080;">A</span>utoReceipt';
 $pdf->SetFont('helvetica', 'B', 16);
-$pdf->SetFillColor(255, 255, 255); // White background
+$pdf->SetFillColor(255, 255, 255); 
 $pdf->Rect(10, 10, 190, 10, 'F'); // Background rectangle for the title
 $pdf->SetXY(10, 10); // Position for the title
 $pdf->writeHTMLCell(0, 10, '', '', $title, 0, 1, 0, true, 'C', true);
@@ -194,12 +203,13 @@ $pdf->Output($filepath, 'F'); // Save to file
 $mail = new PHPMailer(true);
 try {
     $mail->isSMTP();
-    $mail->Host       = 'smtp.gmail.com';
+    $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'eugenekuria66@gmail.com';
-    $mail->Password   = 'hamk nfql ozcj lpyo'; // Update with actual password
+    $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+    $mail->Password   = $_ENV['PASS2']; 
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port       = 587;
+    $mail->Port       = $_ENV['PORT'];  // Use port 587
+
 
     $mail->SMTPDebug = 3;
     if (!isset($studentEmail) || empty($studentEmail) || !isset($studentName) || empty($studentName)) {

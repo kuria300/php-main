@@ -1,4 +1,16 @@
 <?php
+
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
+
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/PHPMailer.php');
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/Exception.php');
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/SMTP.php');
@@ -59,12 +71,13 @@ function sendReminder($connect, $payment, $student, $smtpDetails) {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
         $mail->SMTPAuth   = true;
-        $mail->Username   = $smtpDetails['admin_email'];
-        $mail->Password   ='iqxl rubd okpk csun';
+        $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+        $mail->Password   = $_ENV['PASS']; 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
+        $mail->Port       = $_ENV['PORT'];  // Use port 587
+    
 
         $mail->setFrom($smtpDetails['admin_email'], 'Moses');
         $mail->addAddress($email);

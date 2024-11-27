@@ -7,6 +7,17 @@ require('C:/xampp/htdocs/sms/PHPMailer-master/src/SMTP.php');
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
+
 // Check if payment_id and email are provided
 if (isset($_POST['payment_id']) && isset($_POST['email'])) {
     $payment_id = (int)$_POST['payment_id'];
@@ -53,7 +64,7 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
         // Title styling
         $title = '<span style="color: #800080;">A</span>utoReceipt';
         $pdf->SetFont('helvetica', 'B', 16);
-        $pdf->SetFillColor(255, 255, 255); // White background
+        $pdf->SetFillColor(255, 255, 255); 
         $pdf->Rect(10, 10, 190, 10, 'F'); // Background rectangle for the title
         $pdf->SetXY(10, 10); // Position for the title
         $pdf->writeHTMLCell(0, 10, '', '', $title, 0, 1, 0, true, 'C', true);
@@ -71,7 +82,7 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
         $paymentMethod = htmlspecialchars($payment['payment_method']);
         $totalAmount = htmlspecialchars($payment['total_amount']);
         $paidAmount = htmlspecialchars($payment['paid_amount']);
-        $remainingAmount = $totalAmount - $paidAmount; // Calculating remaining amount
+        $remainingAmount = $totalAmount - $paidAmount; 
         $status = htmlspecialchars($payment['status']);
 
         // Add details to PDF
@@ -146,12 +157,13 @@ if (isset($_POST['payment_id']) && isset($_POST['email'])) {
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
-            $mail->Host       = 'smtp.gmail.com';
+            $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'eugenekuria66@gmail.com';
-            $mail->Password   = 'hamk nfql ozcj lpyo'; // Replace with actual password
+            $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+            $mail->Password   = $_ENV['PASS2'];
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = 587;
+            $mail->Port       = $_ENV['PORT'];  // Use port 587
+        
 
             $mail->setFrom($payment['student_email'], $payment['student_name']);
             $mail->addAddress($payment['student_email']);

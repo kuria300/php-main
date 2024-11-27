@@ -2,20 +2,33 @@
 session_start();
 include('DB_connect.php');
 
-/*function is_login() {
-    return isset($_SESSION["admin_id"]);
-}
-if(!is_login()){
-    header("location: Admin.php");
- }
-function is_master_user(){
-    return isset($_SESSION["admin_type"]) === "master";
-}
-if(!is_Master_user()){
-    header("location: dashboard.php");
-}*/
-include('res/functions.php');
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
  
+if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
+    // Store user role for easier access
+    
+    $userRole = $_SESSION["role"];
+    $adminType = $_SESSION["admin_type"] ?? '';
+    $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
+ $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
+    // Map roles to display names
+    $roleNames = [
+        "1" => "Admin",
+        "2" => "Student",
+        "default" => "Parent"
+    ];
+    // Determine role name based on the session
+    $displayRole = $roleNames[$userRole] ?? $roleNames["default"];
+}
 $message=$error="";
 
 require('C:/xampp/htdocs/sms/PHPMailer-master/src/PHPMailer.php');
@@ -89,12 +102,13 @@ if (isset($_POST["add_user"])) {
                 $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
-                $mail->Host       = 'smtp.gmail.com';  // Set the SMTP server to send through
+                $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'eugenekuria66@gmail.com'; // SMTP username
-                $mail->Password   = 'iqxl rubd okpk csun'; // SMTP password
+                $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+                $mail->Password   = $_ENV['PASS']; // Use your app password (if 2FA is enabled)
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port       = 587;
+                $mail->Port       = $_ENV['PORT'];  // Use port 587
+            
 
                 // Recipients
                 $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
@@ -173,19 +187,23 @@ if (empty($errors)) {
         $stmt->bind_param('sssi', $formdata['admin_name'], $formdata['admin_email'], $formdata['admin_password'], $_POST['admin_id']);
 
 
-        $is_password_changed = ($formdata['admin_password'] !== $original_password);
+        $form_password = trim($formdata['admin_password']);
+        $original_password = trim($original_password); 
+
+        $is_password_changed = ($form_password !== $original_password);
         if ($stmt->execute()) {
             // Send email only if password has changed
             if ($is_password_changed) {
                 $mail = new PHPMailer(true);
                 try {
                     $mail->isSMTP();
-                    $mail->Host       = 'smtp.gmail.com';  // Set the SMTP server to send through
+                    $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
                     $mail->SMTPAuth   = true;
-                    $mail->Username   = 'eugenekuria66@gmail.com'; // SMTP username
-                    $mail->Password   = 'iqxl rubd okpk csun'; // SMTP password
+                    $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+                    $mail->Password   = $_ENV['PASS']; // Use your app password (if 2FA is enabled)
                     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                    $mail->Port       = 587;
+                    $mail->Port       = $_ENV['PORT'];  // Use port 587
+                
 
                     // Recipients
                     $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
@@ -203,14 +221,12 @@ if (empty($errors)) {
                         error_log("Mail Error: {$mail->ErrorInfo}");
                     }
                 }
-            }
-            $message = "User updated successfully";
-        } else {
-            $errors[] = "Failed to update user";
-        }
+                header('Location: studententry.php?message=edit');
+                exit();
+            } 
         $stmt->close();
     }
-   
+  }
 }
 if (isset($_GET['action'], $_GET['id'], $_GET['status']) && $_GET['action'] == 'delete') {
     $admin_id = $_GET['id'];
@@ -239,22 +255,7 @@ if (isset($_GET['action'], $_GET['id'], $_GET['status']) && $_GET['action'] == '
     }
 }
 
-if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
-        // Store user role for easier access
-        
-        $userRole = $_SESSION["role"];
-        $adminType = $_SESSION["admin_type"] ?? '';
-        $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
-     $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
-        // Map roles to display names
-        $roleNames = [
-            "1" => "Admin",
-            "2" => "Student",
-            "default" => "Parent"
-        ];
-        // Determine role name based on the session
-        $displayRole = $roleNames[$userRole] ?? $roleNames["default"];
-}
+
 $query = "";
 $imageField = "";
 
@@ -270,7 +271,7 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -500,10 +501,10 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
-                <li class="sidebar-list-item">
+                </ul>
+            </div>
+        </div>
+             <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
                     href="#collapsePayments" 

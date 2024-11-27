@@ -2,7 +2,6 @@
 session_start();
  include('DB_connect.php');
 
- include('res/functions.php');
  
  if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
@@ -27,7 +26,7 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     $displayRole = $roleNames[$userRole];
 
     
-}$parentId = $_SESSION["id"]; // Assuming the parent ID is stored in session
+}$parentId = $_SESSION["id"]; 
 
 // Fetch messages for students related to the logged-in parent
 $stmt = $connect->prepare("
@@ -100,7 +99,7 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -320,10 +319,10 @@ $connect->close();
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
-                <li class="sidebar-list-item">
+             </ul>
+         </div>
+       </div>
+            <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
                     href="#collapsePayments" 
@@ -513,11 +512,11 @@ $connect->close();
             }else {
             ?>
              <h1 class="mt-2 head-update">Message Management</h1>
-<ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
-    <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
-    <li class="breadcrumb-item active">Message Management</li>
-</ol>
-<?php
+                <ol class="breadcrumb mb-4 small" style="background-color:#9b9999 ; color: white; padding: 10px; border-radius: 5px;">
+                    <li class="breadcrumb-item"><a href="dashboard.php" style="color: #f8f9fa;">Dashboard</a></li>
+                    <li class="breadcrumb-item active">Message Management</li>
+                </ol>
+                <?php
             if (isset($_GET['msg'])) {
                 if ($_GET['msg'] == 'edit') {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -533,24 +532,22 @@ $connect->close();
                 }
             }
             ?>
-<div class="card mb-4">
-    <div class="card-header">
-        <div class="row">
-            <div class="col-md-6">
-                <span class="material-symbols-outlined">message</span> Messages
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-6">
+                        <span class="material-symbols-outlined">message</span> Messages
+                    </div>
+                    <div class="col-md-6 d-flex justify-content-end align-items-center">
+                    <!-- Search Bar -->
+                    <div class="mb-0 me-3">
+                        <input type="text" id="searchBar" class="form-control" placeholder="Search messages..." onkeyup="searchNotice()">
+                    </div>
+                </div>
             </div>
-            <div class="col-md-6 d-flex justify-content-end align-items-center">
-                            <!-- Search Bar -->
-                            <div class="mb-0 me-3">
-                                <input type="text" id="searchBar" class="form-control" placeholder="Search messages..." onkeyup="searchNotice()">
-                            </div>
-        </div>
-    </div>
-
     <div class="card-body">
     <div class="table-responsive">
         <h3>Messages</h3>
-
         <?php
         // Include database connection
         include('DB_connect.php');
@@ -761,12 +758,11 @@ $connect->close();
             echo '<p>Database connection error.</p>';
         }
         ?>
+           </div>
+         </div>
+       </div>
     </div>
-</div>
-</div>
-    </div>
-               
-                <footer class="main-footer px-3">
+          <footer class="main-footer px-3">
                     <div class="pull-right hidden-xs">
                     <p>&copy; <?php echo date('Y'); ?> <a href="dashboard.php" class="text-white"><?php echo $systemName; ?></a>. All rights reserved.</p>
                     </div>

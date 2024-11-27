@@ -68,7 +68,7 @@ $pdf->AddPage();
 // Title styling
 $title = '<span style="color: #800080;">A</span>utoReceipt';
 $pdf->SetFont('helvetica', 'B', 16);
-$pdf->SetFillColor(255, 255, 255); // White background
+$pdf->SetFillColor(255, 255, 255); 
 $pdf->Rect(10, 10, 190, 10, 'F'); // Background rectangle for the title
 $pdf->SetXY(10, 10); // Position for the title
 $pdf->writeHTMLCell(0, 10, '', '', $title, 0, 1, 0, true, 'C', true);
@@ -87,7 +87,7 @@ if ($connect instanceof mysqli) {
         WHERE s.parent_id = ? AND d.payment_id = ?
     ");
     
-    $stmt->bind_param("ii", $userId, $paymentId); // Assuming $userId is the parent ID and $paymentId is the current payment ID
+    $stmt->bind_param("ii", $userId, $paymentId); 
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -145,7 +145,7 @@ if ($connect instanceof mysqli) {
         WHERE d.payment_id = ?
     ");
     
-    $stmt->bind_param("i", $paymentId); // Assuming $userId is the parent ID and $paymentId is the current payment ID
+    $stmt->bind_param("i", $paymentId); 
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -187,7 +187,7 @@ if ($connect instanceof mysqli) {
             $paymentMethod = $row['payment_method'];
             $totalAmount = $row['total_amount'];
             $paidAmount = $row['paid_amount'];
-            $remainingAmount = $row['remaining_amount']; // Calculating remaining amount
+            $remainingAmount = $row['remaining_amount'];
             $status = $row['status'];
 
             // QR Code generation
@@ -240,11 +240,12 @@ if ($connect instanceof mysqli) {
             $paymentStmt = $connect->prepare("
                 SELECT payment_date, payment_method, total_amount, paid_amount, remaining_amount, payment_number
                 FROM deposit
-                WHERE student_id = ? AND payment_id != ?
-            ");
+                WHERE student_id = ? 
             
+            ");
+            //AND payment_id != ?
             if ($paymentStmt) {
-                $paymentStmt->bind_param('ii', $studentId, $paymentId);
+                $paymentStmt->bind_param('i', $studentId);
                 $paymentStmt->execute();
                 $paymentResult = $paymentStmt->get_result();
             

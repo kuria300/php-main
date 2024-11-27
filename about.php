@@ -33,7 +33,7 @@ $connect->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About Us</title>
-    <link rel="stylesheet" href="css/about.css">
+    <link rel="stylesheet" href="css/about2.css">
     <link rel="icon" href="logo2.png">
     <!-- Bootstrap links -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
@@ -45,7 +45,7 @@ $connect->close();
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-        <a class="navbar-brand fw-bold heading" href="#"><span class="material"><?php echo htmlspecialchars_decode($systemName); ?></span></a>
+        <a class="navbar-brand fw-bold heading" href="#"><span class="material"> <bold class="purple"><?php echo $systemName; ?></bold></span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -66,7 +66,7 @@ $connect->close();
     <!-- About Us Section -->
     <section class="about-us">
         <div class="container mt-5">
-            <h1 class="text-center mb-4">About Auto Receipt</h1>
+            <h1 class="text-center mb-4">About AutoReceipt</h1>
             <p>Welcome to Auto Receipt, a cutting-edge system designed to streamline and automate receipt management for educational institutions. Our platform offers a comprehensive suite of features to manage, generate, and track receipts with ease.</p>
 
             <h2 class="mt-4">Our Mission</h2>

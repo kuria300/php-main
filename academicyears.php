@@ -2,14 +2,11 @@
 session_start();
  include('DB_connect.php');
 
- include('res/functions.php');
  
  if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
     exit;
 }
-
-
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     
     $userId = $_SESSION["id"];
@@ -354,9 +351,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+                </ul>
+            </div>
+        </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -506,20 +503,20 @@ if ($settingsResult) {
                                     </div>
                                     <div class="card-body">
                                     <form method="post" action="academicyears.php"> <!-- Ensure the action points to the correct PHP file -->
-    <div class="form-group mb-3">
-        <label for="academic_id">Academic Year ID:</label>
-        <input type="number" id="academic_id" name="academic_id" class="form-control" value="<?php echo htmlspecialchars($academic_year['academic_year_id']); ?>" required readonly>
-    </div>
-    <div class="form-group mb-3">
-        <label for="academic_year">Academic Year:</label>
-        <input type="text" id="academic_year" name="academic_year" class="form-control" value="<?php echo htmlspecialchars($academic_year['academic_year']); ?>" required>
-    </div>
-    <div class="form-group mb-3">
-        <label for="description">Description:</label>
-        <textarea id="description" name="description" class="form-control" rows="3" required><?php echo htmlspecialchars($academic_year['description']); ?></textarea>
-    </div>
-    <button type="submit" name="update_academic_year" class="btn btn-primary">Update Academic Year</button>
-</form>
+                                        <div class="form-group mb-3">
+                                            <label for="academic_id">Academic Year ID:</label>
+                                            <input type="number" id="academic_id" name="academic_id" class="form-control" value="<?php echo htmlspecialchars($academic_year['academic_year_id']); ?>" required readonly>
+                                        </div>
+                                        <div class="form-group mb-3">
+                                            <label for="academic_year">Academic Year:</label>
+                                            <input type="text" id="academic_year" name="academic_year" class="form-control" value="<?php echo htmlspecialchars($academic_year['academic_year']); ?>" required>
+                                        </div>
+                                        <div class="form-group mb-3">
+                                            <label for="description">Description:</label>
+                                            <textarea id="description" name="description" class="form-control" rows="3" required><?php echo htmlspecialchars($academic_year['description']); ?></textarea>
+                                        </div>
+                                        <button type="submit" name="update_academic_year" class="btn btn-primary">Update Academic Year</button>
+                                    </form>
                                     </div>
                                 </div>
                             </div>
@@ -647,21 +644,19 @@ if ($stmt) {
 }
 ?>
 
-
-                <div class="table-responsive">
+         <div class="table-responsive">
                     <div class="card-body">
                         <div class="grades-section mt-1 mb-2">
                             <h3>Academic Year</h3>
                             <div class="table-responsive">
                             <table class="table table-striped" id="academicTable">
-    <thead>
-    <tr>
-        
-        <th>Academic Year</th>
-        <th>Description</th>
-        <th>Actions</th>
-    </tr>
-<tbody>
+                             <thead>
+                            <tr>
+                        <th>Academic Year</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                <tbody>
     <?php
     // Fetch data from the database
 
@@ -735,34 +730,34 @@ if ($stmt) {
     ?>
 </tbody>
 </table>
-                            </div>
-                            <!-- Pagination Controls -->
-                            <nav aria-label="Page navigation">
-    <ul class="pagination">
-        <!-- Previous Page Link -->
-        <?php if ($current_page > 1): ?>
-            <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page - 1; ?>">Previous</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Previous</span></li>
-        <?php endif; ?>
+          </div>
+                 <!-- Pagination Controls -->
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination">
+                            <!-- Previous Page Link -->
+                              <?php if ($current_page > 1): ?>
+                                    <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page - 1; ?>">Previous</a></li>
+                                <?php else: ?>
+                                    <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                                <?php endif; ?>
 
-        <!-- Page Number Links -->
-        <?php for ($page = 1; $page <= $total_pages; $page++): ?>
-            <?php if ($page == $current_page): ?>
-                <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
-            <?php else: ?>
-                <li class="page-item"><a class="page-link" href="?page=<?php echo $page; ?>"><?php echo $page; ?></a></li>
-            <?php endif; ?>
-        <?php endfor; ?>
+                                <!-- Page Number Links -->
+                                <?php for ($page = 1; $page <= $total_pages; $page++): ?>
+                                    <?php if ($page == $current_page): ?>
+                                        <li class="page-item active"><span class="page-link"><?php echo $page; ?></span></li>
+                                    <?php else: ?>
+                                        <li class="page-item"><a class="page-link" href="?page=<?php echo $page; ?>"><?php echo $page; ?></a></li>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
 
-        <!-- Next Page Link -->
-        <?php if ($current_page < $total_pages): ?>
-            <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page + 1; ?>">Next</a></li>
-        <?php else: ?>
-            <li class="page-item disabled"><span class="page-link">Next</span></li>
-        <?php endif; ?>
-    </ul>
-</nav>
+                                <!-- Next Page Link -->
+                                <?php if ($current_page < $total_pages): ?>
+                                    <li class="page-item"><a class="page-link" href="?page=<?php echo $current_page + 1; ?>">Next</a></li>
+                                <?php else: ?>
+                                    <li class="page-item disabled"><span class="page-link">Next</span></li>
+                                <?php endif; ?>
+                            </ul>
+                        </nav>
                         </div>
                     </div>
                 </div>

@@ -3,20 +3,18 @@ session_start();
 include('DB_connect.php');
 
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
-    // Store user role for easier access
-
+  
     $userId = $_SESSION["id"];
     $userRole = $_SESSION["role"];
     $adminType = $_SESSION["admin_type"] ?? '';
     $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
     $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
-    // Map roles to display names
+   
     $roleNames = [
         "1" => "Admin",
         "2" => "Student",
         "3" => "Parent"
     ];
-    // Determine role name based on the session
     $displayRole = $roleNames[$userRole] ?? "Parent";
 }
 $due_date = '';
@@ -25,26 +23,30 @@ $due_date = '';
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
     $payment_date = date('Y-m-d H:i:s');
     // Calculate the due date as 10 days after the payment date
-    $due_date = date('Y-m-d', strtotime($payment_date .' -9 days'));
+    $due_date = date('Y-m-d', strtotime($payment_date .' -10 days'));
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_payment'])) {
-    include('DB_connect.php'); // Ensure this file initializes $connect
-
-    $id = $_SESSION['id']; // Assuming this is used somewhere else for filtering
+    include('DB_connect.php');
+    $id = $_SESSION['id']; 
     
-    $student_id = intval($_POST['student_name']);
+    // Sanitize and collect input data
+    $student_id = isset($_POST['student_name']) ? intval($_POST['student_name']) : 0;
+    //$course_id = isset($_POST['course_id']) ;
     $payment_method = isset($_POST['payment_method']) ? $_POST['payment_method'] : '';
     $total_amount = isset($_POST['total_amount']) ? floatval($_POST['total_amount']) : 0;
     $paid_amount = isset($_POST['paid_amount']) ? floatval($_POST['paid_amount']) : 0;
     $remaining_amount = isset($_POST['remaining_amount']) ? floatval($_POST['remaining_amount']) : 0;
     $status = ''; // Default to 'pending'
 
-    $parent_id= isset($_POST['parent_id']);
+    // Default parent_id and payment date
+    $parent_name = isset($_POST['parent_id']) ? $_POST['parent_id'] : '';
     $payment_date = date('Y-m-d H:i:s');
 
+    // Handle due date
     $due_date = isset($_POST['due_date']) ? $_POST['due_date'] : '';
-   
+
+    // Determine payment status based on paid amount
     if ($paid_amount >= $total_amount) {
         $status = 'Paid';
     } elseif ($paid_amount > 0) {
@@ -52,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_payment'])) {
     } else {
         $status = 'Unpaid';
     }
+
     // Basic validation
     $errorMessages = '';
     $errors = [];
@@ -60,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_payment'])) {
     }
 
     if ($total_amount <= 0) {
-        $errors[] = 'payable amount must be greater than zero.';
+        $errors[] = 'Total amount must be greater than zero.';
     }
 
     if ($paid_amount < 0) {
@@ -71,81 +74,56 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_payment'])) {
         $errors[] = 'Paid amount cannot be greater than the total amount.';
     }
 
-    // Or however you get the parent_id from the form
-$fetch_parent_query = "SELECT p.parent_name
-FROM students s
-JOIN parents p ON s.parent_id = p.parent_id
-WHERE s.student_id = ?;";
-$parent_stmt = $connect->prepare($fetch_parent_query);
-$parent_stmt->bind_param('i', $id);
-$parent_stmt->execute();
-$parent_result = $parent_stmt->get_result();
-
-if ($parent_row = $parent_result->fetch_assoc()) {
-    $parent_name = $parent_row['parent_name'];
-} else {
-    $parent_name = ''; // Handle as needed
-}
-$parent_stmt->close();
-    
-
+    // Redirect if there are errors
     if (!empty($errors)) {
         // Convert errors array to a query string format
-        $errorMessages = urlencode(implode('; ', $errors)); // Use semicolon to separate messages
-    
-        header('Location: deposit.php?msg=error&errors=' . $errorMessages); // Redirect with query parameters
+        $errorMessages = urlencode(implode('; ', $errors));
+        header('Location: deposit.php?msg=error&errors=' . $errorMessages);
         exit();
-    }else {
-       
-        $message = 'Payment processed successfully.';
     }
 
-
-$student_query = "SELECT parent_id FROM students WHERE student_id = ?";
+    // Fetch student's parent ID and course ID from students table
+    $student_query = "SELECT s.parent_id, e.course_id 
+    FROM students s
+    JOIN enrollments e ON s.student_id = e.student_id
+    WHERE s.student_id = ?";
 $stmt = $connect->prepare($student_query);
-$stmt->bind_param('i',  $id);
+$stmt->bind_param('i', $id);  // 'i' means integer (for student_id)
 $stmt->execute();
-$stmt->bind_result($parents_id);
+$stmt->bind_result($parents_id, $courses_id);
 $stmt->fetch();
 $stmt->close();
 
-$fetch_parent_query = "SELECT parent_name FROM parents WHERE parent_id = ?";
-$parent_stmt = $connect->prepare($fetch_parent_query);
-$parent_stmt->bind_param('i', $id);
-$parent_stmt->execute();
-$parent_row = $parent_stmt->get_result()->fetch_assoc();
-$parent_name = $parent_row ? $parent_row['parent_name'] : '';
-
-if ($displayRole === 'Student' || $displayRole === 'Admin') {
-    $parentIdToBind = $parents_id; // Use the parent's ID fetched from the students table
-} else {
-    $parentIdToBind = $id; // Assuming $id is the student_id in this context
-}
-
-
-
-    // Insert payment details into the database
-    $query = " INSERT INTO deposit (student_id, payment_number, due_date, total_amount, paid_amount, payment_method, status, payment_date, parent_id, parent_name, remaining_amount)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
-
-            if ($stmt = $connect->prepare($query)) {
-                $stmt->bind_param("isssssssss", $student_id, $payment_number, $due_date, $total_amount, $paid_amount, $payment_method, $status, $parentIdToBind, $parent_name, $remaining_amount);
-
-                if ($stmt->execute()) {
-                    // Redirect to the same page with a success message
-                    header('Location: deposit.php?msg=success');
-                    exit();
+     // Fetch parent name from the database
+    
+    if ($displayRole === 'Student' || $displayRole === 'Admin') {
+        $parentIdToBind = $parents_id; 
     } else {
-        // Print error if execution fails
-        echo "Error: " . $stmt->error;
+        $parentIdToBind = $id; 
     }
+   
 
-    $stmt->close();
-    } else {
-        echo '<p>Failed to prepare the SQL statement.</p>';
+        // If no previous payment, insert a new entry
+        $query = "INSERT INTO deposit (student_id, payment_number, due_date, total_amount, paid_amount, payment_method, status, payment_date, parent_id, parent_name, remaining_amount)
+              VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
+
+        if ($stmt = $connect->prepare($query)) {
+            $stmt->bind_param("isssssssss", $student_id, $payment_method, $due_date, $total_amount, $paid_amount, $payment_method, $status, $parentIdToBind, $parent_name, $remaining_amount);
+
+            if ($stmt->execute()) {
+                // Redirect with success message if insertion is successful
+                header('Location: deposit.php?msg=success');
+                exit();
+            } else {
+                // If the SQL execution fails
+                echo "Error: " . $stmt->error;
+            }
+
+          
+        } else {
+            echo '<p>Failed to prepare the SQL statement.</p>';
+        }
     }
-
-}
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'add') {
         echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -183,6 +161,7 @@ $courses = [];
 while ($row = $result->fetch_assoc()) {
 $courses[] = $row;
 }
+
 
 ?>
 
@@ -226,7 +205,7 @@ $courses[] = $row;
 </head>
 <body>
 
-<!-- M-Pesa Payment Modal -->
+<!-- cash Payment Modal -->
 <div class="modal" tabindex="-1" id="payFeesModal" role="dialog" aria-labelledby="payFeesModalLabel" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
@@ -238,124 +217,7 @@ $courses[] = $row;
             </div>
             <div class="modal-body">
                 <form action="deposit.php" method="post">
-                <?php include('DB_connect.php');
 
-if ($displayRole === 'Admin') {
-    // Prepare query to select all parent IDs
-    $student_query = "SELECT parent_id FROM parents";
-    $stmt = $connect->prepare($student_query);
-    // Execute the query
-    $stmt->execute();
-    // Bind result
-    $stmt->bind_result($parent_id);
- 
-    // Close the statement
-    $stmt->close();
-   
-}
-?>
-                <?php if ($displayRole === 'Admin'): ?>
-                    <div class="mb-3">
-                        <label for="parentSelect" class="form-label">Select Parent</label>
-                        <select id="parentSelect" class="form-select" name="parent_id" required>
-                        <?php
-        include('DB_connect.php');
-
-        // Prepare the query to fetch all parents
-        $parent_query = "SELECT parent_id, parent_name FROM parents ORDER BY parent_name";
-        $parent_stmt = $connect->prepare($parent_query);
-
-        // Check if the statement was prepared correctly
-        if ($parent_stmt) {
-            $parent_stmt->execute();
-            $parent_result = $parent_stmt->get_result();
-
-            // Check if there are any parents
-            if ($parent_result->num_rows > 0) {
-                // Iterate over each parent
-                while ($parentRow = $parent_result->fetch_assoc()) {
-                    // Display each parent as an option
-                    echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '">' . htmlspecialchars($parentRow['parent_name']) . '</option>';
-                }
-            } else {
-                echo '<option value="">No parents found</option>';
-            }
-
-            $parent_stmt->close();
-        } else {
-            echo '<option value="">Error preparing statement.</option>';
-        }
-
-        $connect->close();
-        ?>
-                        </select>
-                    </div>     
-                                            <div class="mb-3">
-    <label for="studentSelect" class="form-label">Select Student</label>
-    <select id="studentSelect" class="form-select" name="student_name" required>
-        <option value="">Select a parent first</option>
-    </select>
-</div>
-<div class="mb-3">
-    <label for="studentNumber" class="form-label">Admission Number</label>
-    <select id="studentNumber" class="form-select" name="student_number" required>
-        <option value="">Select a student</option>
-    </select>
-</div>
-<div class="mb-3">
-    <label for="courseSelect" class="form-label">Select Courses:</label>
-    <select id="courseSelect" class="form-select" name="course_id">
-        <!-- Options will be populated dynamically -->
-    </select>
-</div>
-
-<div class="mb-3">
-    <label for="totalAmount" class="form-label">Total Payable Amount:</label>
-    <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" required readonly>
-</div>
-                                                <div class="mb-3">
-                                                    <label for="paidAmount" class="form-label">Paid Amount:</label>
-                                                    <input type="number" class="form-control" id="paidAmount" name="paid_amount" min="0" required>
-                                                </div>
-                                                <div class="mb-3">
-        <label for="remainingAmount" class="form-label">Remaining Amount</label>
-        <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" readonly>
-    </div>
-                                            <div class="mb-3">
-                                                <label for="dueDate" class="form-label">Due Date</label>
-                                                <input type="text" class="form-control" id="dueDate" name="due_date" value="<?php echo htmlspecialchars($due_date); ?>" readonly>
-                                            </div>
-                                            <label for="payment_method">Payment Method:</label>
-                                                <select id="payment_method" name="payment_method" required>
-                                                <option value="cash" class="text-muted">Choose Payment</option>
-                                                    <option value="cash">Cash</option>
-                                                    <option value="mpesa">M-Pesa</option>
-                                                    <option value="credit_card">Credit Card</option>
-                                                </select><br><br>
-
-                                                <div class="mb-3">
-                                                    <label for="status" class="form-label">Status</label>
-                                                    <div class="custom-select-wrapper">
-                                                        <div class="custom-select">
-                                                            <div class="selected">Select Status</div>
-                                                            <div class="dropdown-menu">
-                                                                <div class="dropdown-item btn-danger" data-value="Unpaid">Unpaid</div>
-                                                                <div class="dropdown-item btn-warning" data-value="Pending">Pending</div>
-                                                                <div class="dropdown-item btn-success" data-value="Paid">Paid</div>
-                                                            </div>
-                                                            <select id="status" name="status">
-                                                                <option value="Unpaid">Unpaid</option>
-                                                                <option value="Pending">Pending</option>
-                                                                <option value="Paid">Paid</option>
-                                                            </select>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <button type="submit" class="btn btn-success" name="submit_payment">Submit Payment</button>
-                                                </div>
-                                            </form>
-                    <?php endif; ?>
                 <?php
                     include('DB_connect.php');
                        
@@ -369,9 +231,9 @@ if ($displayRole === 'Admin') {
                 ?>
                 <?php if ($displayRole === 'Student'): ?>
                 <div class="mb-3">
-                                                    <label for="studentSelect" class="form-label">Select Student</label>
-                                                    <select id="studentSelect" class="form-select" name="student_name" required>
-                                                    <?php
+                            <label for="studentSelect" class="form-label">Select Student</label>
+                                    <select id="studentSelect" class="form-select" name="student_name" required>
+                                            <?php
                                                      include('DB_connect.php');
                                                                                                             
                                                         // Check if session and database connection are valid
@@ -433,6 +295,61 @@ if ($displayRole === 'Admin') {
                                                     </select>
                                                 </div>
                                                 <div class="mb-3">
+                                                    <label for="parentSelect" class="form-label">Select Parent</label>
+                                                    <select id="parentSelect" class="form-select" name="parent_id" required>
+                                                        <?php
+                                                        include('DB_connect.php');
+
+                                                        // Check if session and database connection are valid
+                                                        if (isset($_SESSION['id']) && $connect instanceof mysqli) {
+                                                            $loggedInUser = $_SESSION['id']; // Get the logged-in student's ID
+
+                                                            // Query to fetch the parent of the logged-in student
+                                                            if ($displayRole === 'Student' || $displayRole === 'Parent') {
+                                                                // Fetch parent details for the student
+                                                                $query = "
+                                                                    SELECT parents.parent_id, parents.parent_name 
+                                                                    FROM parents
+                                                                    JOIN students ON students.parent_id = parents.parent_id
+                                                                    WHERE students.student_id = ?
+                                                                ";
+                                                            } else {
+                                                                echo '<option value="">Invalid role</option>';
+                                                                exit;
+                                                            }
+
+                                                            // Prepare and execute the query
+                                                            $parentStmt = $connect->prepare($query);
+                                                            if ($parentStmt) {
+                                                                // Bind the student ID to the query
+                                                                $parentStmt->bind_param('i', $loggedInUser); // Bind the logged-in student's ID
+                                                                $parentStmt->execute();
+                                                                $parentResult = $parentStmt->get_result();
+
+                                                                if ($parentResult->num_rows > 0) {
+                                                                    // Fetch and display the parent
+                                                                    while ($parentRow = $parentResult->fetch_assoc()) {
+                                                                        echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '">' 
+                                                                        . htmlspecialchars($parentRow['parent_name']) . '</option>';
+                                                                    }
+                                                                } else {
+                                                                    // If no parent found, display a placeholder option
+                                                                    echo '<option value="">No parent found</option>';
+                                                                }
+                                                                $parentStmt->close();
+                                                            } else {
+                                                                // Display an error if the statement could not be prepared
+                                                                echo '<option value="">Error preparing the query</option>';
+                                                            }
+                                                        } else {
+                                                            // Display an error if the session is not valid or database connection is not set
+                                                            echo '<option value="">Session or database connection issue</option>';
+                                                        }
+                                                        ?>
+                                                    </select>
+                                                </div>
+                                                                
+                                                    <div class="mb-3">
                                                     <label for="studentSelect" class="form-label">Admission Number</label>
                                                     <select id="studentSelect" class="form-select" name="student_number" required>
                                                     <?php
@@ -501,56 +418,18 @@ if ($displayRole === 'Admin') {
                                                     ?>
                                                     </select>
                                                 </div>
+
+  
                                                 <div class="mb-3">
-                                                                    <label for="parentSelect" class="form-label">Select Parent</label>
-                                                                    <select id="parentSelect" class="form-select" name="parent_id" required>
-                                                                    <?php
-                                                                include('DB_connect.php');
-
-                                                                // Ensure $parent_id is correctly set and valid
-                                                                $parent_id = intval($parent_id); // Cast to integer if $parent_id should be an integer
-                                                                
-                                                                // Debugging: Print the parent_id to verify it's being set correctly
-                                                                    echo 'Parent ID: ' . $parent_id;
-                                                                
-                                                                // Prepare the query to fetch parent details
-                                                                $parent_query = "SELECT parent_id, parent_name FROM parents WHERE parent_id = ? ORDER BY parent_name";
-                                                                $stmt = $connect->prepare($parent_query);
-                                                                
-                                                                // Check if the statement was prepared correctly
-                                                                if ($stmt) {
-                                                                    $stmt->bind_param('i', $parent_id);
-                                                                    $stmt->execute();
-                                                                    $parent_result = $stmt->get_result();
-                                                                
-                                                                    if ($parent_result->num_rows > 0) {
-                                                                        while ($parentRow = $parent_result->fetch_assoc()) {
-                                                                            echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '"';
-                                                                            if ($parentRow['parent_id'] == $parent_id) {
-                                                                                echo ' selected'; // Mark the current parent as selected
-                                                                            }
-                                                                            echo '>' . htmlspecialchars($parentRow['parent_name']) . '</option>';
-                                                                        }
-                                                                    } else {
-                                                                        echo '<option value="">No parents found</option>';
-                                                                    }
-                                                                
-                                                                    $stmt->close();
-                                                                }   
-                                                            ?>
-                                                                    </select>
-                                                                </div>     
-                                                                <div class="mb-3">
-                                                <label for="courseSelect" class="form-label">Select Course:</label>
-                                                <select class="form-select" id="courseSelect" name="course_id">
-                                                    <?php foreach ($courses as $course): ?>
-                                                        <option value="<?php echo htmlspecialchars($course['course_id']); ?>" data-fee="<?php echo htmlspecialchars($course['course_fee']); ?>">
-                                                            <?php echo htmlspecialchars($course['course_name']); ?> - Ksh.<?php echo htmlspecialchars($course['course_fee']); ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-
+                                                    <label for="courseSelect" class="form-label">Select Course:</label>
+                                                    <select class="form-select" id="courseSelect" name="course_id" onchange="updateTotalAmount()">
+                                                        <?php foreach ($courses as $course): ?>
+                                                            <option value="<?php echo htmlspecialchars($course['course_id']); ?>" data-fee="<?php echo htmlspecialchars($course['course_fee']); ?>">
+                                                                <?php echo htmlspecialchars($course['course_name']); ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
                                             <div class="mb-3">
                                                 <label for="totalAmount" class="form-label">Payable amount:</label>
                                                 <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" value="<?php echo htmlspecialchars($courses[0]['course_fee'] ?? ''); ?>" required readonly>
@@ -559,6 +438,7 @@ if ($displayRole === 'Admin') {
                                                 <label for="paidAmount" class="form-label">Paid Amount</label>
                                                 <input type="number" class="form-control" id="paidAmount" name="paid_amount"  min="50" required >
                                             </div>
+                                           
                                             <div class="mb-3">
                                                 <label for="remainingAmount" class="form-label">Remaining Amount</label>
                                                 <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" readonly>
@@ -572,11 +452,8 @@ if ($displayRole === 'Admin') {
                                                 <select id="payment_method" name="payment_method" >
                                                 <option value="cash" class="text-muted">Choose Payment</option>
                                                     <option value="cash">Cash</option>
-                                                    <option value="mpesa">M-Pesa</option>
-                                                    <option value="credit_card">Credit Card</option>
+                                                    
                                                 </select><br><br>
-
-
                                             <div class="mb-3">
                                             <label for="status" class="form-label">Status</label>             
                                             <select id="status" name="status" disabled>
@@ -700,404 +577,239 @@ if ($displayRole === 'Admin') {
                             <label for="parentSelect" class="form-label">Select Parent</label>
                             <select id="parentSelect" class="form-select" name="parent_id" required>
                             <?php
-            include('DB_connect.php');
+                                                    include('DB_connect.php');
 
-            // Check if the session is valid
-            if (isset($_SESSION['id']) && $connect instanceof mysqli) {
-                $parent_id = $_SESSION['id']; // Get the logged-in parent's ID
-                
-                // Prepare the query to fetch the parent details
-                $parent_query = "SELECT parent_id, parent_name FROM parents WHERE parent_id = ?";
-                $stmt = $connect->prepare($parent_query);
+                                                    // Check if the session is valid
+                                                    if (isset($_SESSION['id']) && $connect instanceof mysqli) {
+                                                        $parent_id = $_SESSION['id']; // Get the logged-in parent's ID
+                                                        
+                                                        // Prepare the query to fetch the parent details
+                                                        $parent_query = "SELECT parent_id, parent_name FROM parents WHERE parent_id = ?";
+                                                        $stmt = $connect->prepare($parent_query);
 
-                // Check if the statement was prepared correctly
-                if ($stmt) {
-                    $stmt->bind_param('i', $parent_id);
-                    $stmt->execute();
-                    $parent_result = $stmt->get_result();
+                                                        // Check if the statement was prepared correctly
+                                                        if ($stmt) {
+                                                            $stmt->bind_param('i', $parent_id);
+                                                            $stmt->execute();
+                                                            $parent_result = $stmt->get_result();
 
-                    if ($parent_result->num_rows > 0) {
-                        while ($parentRow = $parent_result->fetch_assoc()) {
-                            echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '" selected>' 
-                                . htmlspecialchars($parentRow['parent_name']) . '</option>';
-                        }
-                    } else {
-                        echo '<option value="">No parents found</option>';
-                    }
+                                                            if ($parent_result->num_rows > 0) {
+                                                                while ($parentRow = $parent_result->fetch_assoc()) {
+                                                                    echo '<option value="' . htmlspecialchars($parentRow['parent_id']) . '" selected>' 
+                                                                        . htmlspecialchars($parentRow['parent_name']) . '</option>';
+                                                                }
+                                                            } else {
+                                                                echo '<option value="">No parents found</option>';
+                                                            }
 
-                    $stmt->close();
-                }
-            } else {
-                echo '<option value="">No valid session found.</option>';
-            }
-            ?>
-                            </select>
-                        </div>     
-                        <div class="mb-3">
-        <label for="courseSelect" class="form-label">Select Course:</label>
-        <select class="form-select" id="courseSelect" name="course_id">
-        <?php
-            include('DB_connect.php');
+                                                            $stmt->close();
+                                                        }
+                                                    } else {
+                                                        echo '<option value="">No valid session found.</option>';
+                                                    }
+                                                    ?>
+                                                                    </select>
+                                                                </div>     
+                                                                <div class="mb-3">
+                                                <label for="courseSelect" class="form-label">Select Course:</label>
+                                                <select class="form-select" id="courseSelect" name="course_id">
+                                                <?php
+                                                    include('DB_connect.php');
 
-            // Check if session is valid and parent ID is set
-            if (isset($_SESSION['id']) && $connect instanceof mysqli) {
-                $parent_id = $_SESSION['id'];
+                                                    // Check if session is valid and parent ID is set
+                                                    if (isset($_SESSION['id']) && $connect instanceof mysqli) {
+                                                        $parent_id = $_SESSION['id'];
 
-                // Query to get students related to the parent
-                $student_query = "
-                    SELECT students.student_id, students.student_name, courses.course_id, courses.course_name, courses.course_fee 
-                    FROM students 
-                    JOIN enrollments ON students.student_id = enrollments.student_id 
-                    JOIN courses ON enrollments.course_id = courses.course_id 
-                    WHERE students.parent_id = ?
-                    ORDER BY students.student_name, courses.course_name
-                ";
+                                                        // Query to get students related to the parent
+                                                        $student_query = "
+                                                            SELECT students.student_id, students.student_name, courses.course_id, courses.course_name, courses.course_fee 
+                                                            FROM students 
+                                                            JOIN enrollments ON students.student_id = enrollments.student_id 
+                                                            JOIN courses ON enrollments.course_id = courses.course_id 
+                                                            WHERE students.parent_id = ?
+                                                            ORDER BY students.student_name, courses.course_name
+                                                        ";
 
-                $stmt = $connect->prepare($student_query);
-                if ($stmt) {
-                    $stmt->bind_param('i', $parent_id);
-                    $stmt->execute();
-                    $result = $stmt->get_result();
+                                                        $stmt = $connect->prepare($student_query);
+                                                        if ($stmt) {
+                                                            $stmt->bind_param('i', $parent_id);
+                                                            $stmt->execute();
+                                                            $result = $stmt->get_result();
 
-                    if ($result->num_rows > 0) {
-                        // To keep track of already displayed courses
-                        $displayed_courses = [];
+                                                            if ($result->num_rows > 0) {
+                                                                // To keep track of already displayed courses
+                                                                $displayed_courses = [];
 
-                        while ($row = $result->fetch_assoc()) {
-                            $course_id = $row['course_id'];
-                            if (!isset($displayed_courses[$course_id])) {
-                                echo '<option value="' . htmlspecialchars($course_id) . '" data-fee="' . htmlspecialchars($row['course_fee']) . '">';
-                                echo htmlspecialchars($row['student_name']) . ': ' . htmlspecialchars($row['course_name']) . ' - Ksh.' . htmlspecialchars($row['course_fee']);
-                                echo '</option>';
-                                
-                                // Mark this course as displayed
-                                $displayed_courses[$course_id] = true;
-                            }
-                        }
-                    } else {
-                        echo '<option value="">No courses found for related students.</option>';
-                    }
+                                                                while ($row = $result->fetch_assoc()) {
+                                                                    $course_id = $row['course_id'];
+                                                                    if (!isset($displayed_courses[$course_id])) {
+                                                                        echo '<option value="' . htmlspecialchars($course_id) . '" data-fee="' . htmlspecialchars($row['course_fee']) . '">';
+                                                                        echo htmlspecialchars($row['student_name']) . ': ' . htmlspecialchars($row['course_name']) . ' - Ksh.' . htmlspecialchars($row['course_fee']);
+                                                                        echo '</option>';
+                                                                        
+                                                                        // Mark this course as displayed
+                                                                        $displayed_courses[$course_id] = true;
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                echo '<option value="">No courses found for related students.</option>';
+                                                            }
 
-                    $stmt->close();
-                } else {
-                    echo '<option value="">Error preparing the query.</option>';
-                }
-            } else {
-                echo '<option value="">No valid session found.</option>';
-            }
-            ?>
-        </select>
-    </div>
-    <div class="mb-3">
-        <label for="totalAmount" class="form-label">Payable amount:</label>
-        <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" value="<?php echo htmlspecialchars($courses[0]['course_fee'] ?? ''); ?>" required readonly>
-    </div>
-<div class="mb-3">
-    <label for="paidAmount" class="form-label">Paid Amount</label>
-    <input type="number" class="form-control" id="paidAmount" name="paid_amount"  min="50" required >
-</div>
- <div class="mb-3">
-            <label for="remainingAmount" class="form-label">Remaining Amount</label>
-            <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" readonly>
-        </div>
-<div class="mb-3">
-     <label for="dueDate" class="form-label">Due Date</label>
-    <input type="text" class="form-control" id="dueDate" name="due_date" value="<?php echo htmlspecialchars($due_date); ?>" readonly>
-</div>
-<label for="payment_method">Payment Method:</label>
+                                                            $stmt->close();
+                                                        } else {
+                                                            echo '<option value="">Error preparing the query.</option>';
+                                                        }
+                                                    } else {
+                                                        echo '<option value="">No valid session found.</option>';
+                                                    }
+                                                    ?>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="totalAmount" class="form-label">Payable amount:</label>
+                                                <input type="number" class="form-control" id="totalAmount" name="total_amount" min="50" value="<?php echo htmlspecialchars($courses[0]['course_fee'] ?? ''); ?>" required readonly>
+                                            </div>
+                                        <div class="mb-3">
+                                            <label for="paidAmount" class="form-label">Paid Amount</label>
+                                            <input type="number" class="form-control" id="paidAmount" name="paid_amount"  min="50" required >
+                                        </div>
+                                        <div class="mb-3">
+                                                    <label for="remainingAmount" class="form-label">Remaining Amount</label>
+                                                    <input type="number" class="form-control" id="remainingAmount" name="remaining_amount" readonly>
+                                                </div>
+                                        <div class="mb-3">
+                                            <label for="dueDate" class="form-label">Due Date</label>
+                                            <input type="text" class="form-control" id="dueDate" name="due_date" value="<?php echo htmlspecialchars($due_date); ?>" readonly>
+                                        </div>
+                                        <label for="payment_method">Payment Method:</label>
                                           
                                                 <select id="payment_method" name="payment_method" >
                                                 <option value="cash" class="text-muted">Choose Payment</option>
                                                     <option value="cash">Cash</option>
-                                                    <option value="mpesa">M-Pesa</option>
-                                                    <option value="credit_card">Credit Card</option>
+                                                   
                                                 </select><br><br>
-<label for="status" class="form-label">Status</label>
-    <div class="custom-select-wrapper">
-        <div class="custom-select">
-                 <div class="dropdown-menu">
-                     <div class="dropdown-item btn-danger" data-value="Unpaid">Unpaid</div>
-                        <div class="dropdown-item btn-warning" data-value="Pending">Pending</div>
-                            <div class="dropdown-item btn-success" data-value="Paid">Paid</div>
- </div>
- <select id="status" name="status" disabled>
-     <option value="Unpaid">Unpaid</option>
-     <option value="Pending">Pending</option>
-     <option value="Paid">Paid</option>
-</select>
- </div>
- </div>
-   <div class="modal-footer mt-2">
-   <button type="submit" class="btn btn-success me-2" name="submit_payment">Submit Payment</button>
-        <a href="deposit.php" class="btn btn-secondary" data-bs-dismiss="modal">Back</a>
-  </div>
-  <?php endif; ?>  
-</form>
-            </div>
-        </div>
-    </div>
-</div>
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Get the current PHP file name
-        const currentFile = window.location.pathname.split("/").pop();
+                            <label for="status" class="form-label">Status</label>
+                                <div class="custom-select-wrapper">
+                                    <div class="custom-select">
+                                            <div class="dropdown-menu">
+                                                <div class="dropdown-item btn-danger" data-value="Unpaid">Unpaid</div>
+                                                    <div class="dropdown-item btn-warning" data-value="Pending">Pending</div>
+                                                        <div class="dropdown-item btn-success" data-value="Paid">Paid</div>
+                                                        </div>
+                                            <select id="status" name="status" disabled>
+                                                <option value="Unpaid">Unpaid</option>
+                                                <option value="Pending">Pending</option>
+                                                <option value="Paid">Paid</option>
+                                            </select>
+                                            </div>
+                                            </div>
+                                            <div class="modal-footer mt-2">
+                                            <button type="submit" class="btn btn-success me-2" name="submit_payment">Submit Payment</button>
+                                                    <a href="deposit.php" class="btn btn-secondary" data-bs-dismiss="modal">Back</a>
+                                            </div>
+                                            <?php endif; ?>  
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                                    <script>
+                                    function updateTotalAmount() {
+                                            const courseSelect = document.getElementById('courseSelect');
+                                            const totalAmountInput = document.getElementById('totalAmount');
 
-        // Determine the payment method based on the current file
-        let selectedPaymentMethod = '';
+                                            // Get the selected option's data-fee attribute
+                                            const selectedOption = courseSelect.options[courseSelect.selectedIndex];
+                                            const courseFee = selectedOption.getAttribute('data-fee');
 
-        switch (currentFile) {
-            case 'cash.php':
-                selectedPaymentMethod = 'cash';
-                break;
-            case 'daraja.php':
-                selectedPaymentMethod = 'mpesa';
-                break;
-            case 'creditpayment.php':
-                selectedPaymentMethod = 'credit_card';
-                break;
-            default:
-                selectedPaymentMethod = ''; // Default case
-                break;
-        }
+                                            // Update the total amount input
+                                            totalAmountInput.value = courseFee;
+                                        }
 
-        // Set the selected payment method in the dropdown
-        const paymentSelect = document.getElementById('payment_method');
-        if (selectedPaymentMethod) {
-            paymentSelect.value = selectedPaymentMethod;
-        }
-    });
-         document.addEventListener('DOMContentLoaded', function() {
-    // Event handler for when a parent is selected
-    document.getElementById('parentSelect').addEventListener('change', function() {
-        var parentId = this.value;
-        var studentSelect = document.getElementById('studentSelect');
+                                        // Initialize the total amount on page load if a course is already selected
+                                        window.onload = function() {
+                                            updateTotalAmount();
+                                        };
+                                        function updateRemaining() {
+                                        const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
+                                        const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
+                                        const remainingAmount = Math.max(0, totalAmount - paidAmount);
+                                        document.getElementById('remainingAmount').value = remainingAmount;
+                                    }
 
-        if (parentId) {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', 'validate2.php?parent_id=' + encodeURIComponent(parentId), true);
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    studentSelect.innerHTML = xhr.responseText;
-                } else {
-                    studentSelect.innerHTML = '<option value="">Error fetching students</option>';
-                }
-            };
-            xhr.send();
-        } else {
-            studentSelect.innerHTML = '<option value="">Select a parent first</option>';
-        }
-    });
+                                    function validateForm() {
+                                        const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
+                                        const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
 
-    // Event handler for when a student is selected
-    document.getElementById('studentSelect').addEventListener('change', function() {
-        var studentId = this.value;
-        var studentNumberSelect = document.getElementById('studentNumber');
-        var courseSelect = document.getElementById('courseSelect');
-        var mpesaNumberInput = document.getElementById('mpesaNumber');
-        var totalAmountInput = document.getElementById('totalAmount');
+                                        if (paidAmount > totalAmount) {
+                                            alert('Paid amount cannot exceed the total amount.');
+                                            return false; // Prevent form submission
+                                        }
 
-        if (studentId) {
-            // Fetch student numbers
-            var xhrStudentNumber = new XMLHttpRequest();
-            xhrStudentNumber.open('GET', 'validate3.php?student_id=' + encodeURIComponent(studentId), true);
-            xhrStudentNumber.onload = function() {
-                if (xhrStudentNumber.status === 200) {
-                    studentNumberSelect.innerHTML = xhrStudentNumber.responseText;
-                } else {
-                    studentNumberSelect.innerHTML = '<option value="">Error fetching admission number</option>';
-                }
-            };
-            xhrStudentNumber.send();
+                                        return true; // Allow form submission
+                                    }
 
-            // Fetch courses and fees
-            var xhrCourseDetails = new XMLHttpRequest();
-            xhrCourseDetails.open('GET', 'fetchCourseDetails.php?student_id=' + encodeURIComponent(studentId), true);
-            xhrCourseDetails.onload = function() {
-                if (xhrCourseDetails.status === 200) {
-                    courseSelect.innerHTML = xhrCourseDetails.responseText;
-                    calculateTotalAmount();
-                } else {
-                    courseSelect.innerHTML = '<option value="">Error fetching courses</option>';
-                }
-            };
-            xhrCourseDetails.send();
+                                        document.addEventListener('DOMContentLoaded', function () {
+                                    var payFeesModal = new bootstrap.Modal(document.getElementById('payFeesModal'));
+                                    var courseSelect = document.getElementById('courseSelect');
+                                    var totalAmountInput = document.getElementById('totalAmount');
+                                    var paidAmountInput = document.getElementById('paidAmount');
+                                    var remainingAmountInput = document.getElementById('remainingAmount');
 
-            // Fetch payment numbers
-            var xhrPaymentNumber = new XMLHttpRequest();
-            xhrPaymentNumber.open('GET', 'fetchPaymentNumber.php?student_id=' + encodeURIComponent(studentId), true);
-            xhrPaymentNumber.onload = function() {
-                if (xhrPaymentNumber.status === 200) {
-                    mpesaNumberInput.value = xhrPaymentNumber.responseText.trim();
-                } else {
-                    mpesaNumberInput.value = '';
-                }
-            };
-            xhrPaymentNumber.send();
-        } else {
-            studentNumberSelect.innerHTML = '<option value="">Select a student</option>';
-            courseSelect.innerHTML = '';
-            mpesaNumberInput.value = '';
-            totalAmountInput.value = '';
-        }
-    });
+                                    // Function to update the amounts
+                                    function updateAmounts() {
+                                        var selectedOption = courseSelect.options[courseSelect.selectedIndex];
+                                        var courseFee = parseFloat(selectedOption.getAttribute('data-fee')) || 0;
+                                        var paidAmount = parseFloat(paidAmountInput.value) || 0;
+                                        var remainingAmount = courseFee - paidAmount;
 
-    // Event handler for when courses are selected
-    document.getElementById('courseSelect').addEventListener('change', function() {
-        calculateTotalAmount();
-    });
+                                        // Set remaining amount and total amount
+                                        remainingAmountInput.value = remainingAmount > 0 ? remainingAmount : 0;
+                                        totalAmountInput.value = courseFee; // Always show the full course fee as total amount
+                                    }
 
-    // Function to calculate the total amount based on selected courses
-    function calculateTotalAmount() {
-        var courseSelect = document.getElementById('courseSelect');
-        var totalAmountInput = document.getElementById('totalAmount');
-        var totalAmount = 0;
+                                    // Event listener for when the modal is shown
+                                    payFeesModal._element.addEventListener('show.bs.modal', function () {
+                                        updateAmounts(); // Update amounts on modal open
+                                    });
 
-        Array.from(courseSelect.selectedOptions).forEach(function(option) {
-            var fee = parseFloat(option.dataset.fee) || 0;
-            totalAmount += fee;
-        });
+                                    // Event listener for course selection change
+                                    courseSelect.addEventListener('change', updateAmounts);
 
-        totalAmountInput.value = totalAmount.toFixed(2);
-    }
-});
- 
-      function updateRemaining() {
-    const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
-    const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
-    const remainingAmount = Math.max(0, totalAmount - paidAmount);
-    document.getElementById('remainingAmount').value = remainingAmount;
-}
+                                    // Recalculate amounts when paid amount changes
+                                    paidAmountInput.addEventListener('input', updateAmounts);
 
-function validateForm() {
-    const totalAmount = parseFloat(document.getElementById('totalAmount').value) || 0;
-    const paidAmount = parseFloat(document.getElementById('paidAmount').value) || 0;
-
-    if (paidAmount > totalAmount) {
-        alert('Paid amount cannot exceed the total amount.');
-        return false; // Prevent form submission
-    }
-
-    return true; // Allow form submission
-}
+                                    // Initial call to set the total amount and remaining amount
+                                    updateAmounts();
+                                    });
 
 
-// Event handler for when courses are selected
-document.getElementById('studentSelect').addEventListener('change', function() {
-    var studentId = this.value;
-    var courseSelect = document.getElementById('courseSelect');
-    var totalAmountInput = document.getElementById('totalAmount');
-    var remainingAmountInput = document.getElementById('remainingAmount');
-    var paidAmountInput = document.getElementById('paidAmount');
+                                                document.addEventListener('DOMContentLoaded', function() {
+                                    const totalAmountField = document.getElementById('totalAmount');
+                                    const paidAmountField = document.getElementById('paidAmount');
+                                    const statusField = document.getElementById('status');
 
-    if (studentId) {
-        // Clear the existing courses
-        courseSelect.innerHTML = '<option value="">Loading courses...</option>';
-        totalAmountInput.value = '';
-        remainingAmountInput.value = '';
-        paidAmountInput.value = '';
+                                    function updateStatus() {
+                                        const totalAmount = parseFloat(totalAmountField.value) || 0;
+                                        const paidAmount = parseFloat(paidAmountField.value) || 0;
 
-        // Fetch courses for the selected student
-        var xhrCourseDetails = new XMLHttpRequest();
-        xhrCourseDetails.open('GET', 'fetchStudentCourses.php?student_id=' + encodeURIComponent(studentId), true);
-        xhrCourseDetails.onload = function() {
-            if (xhrCourseDetails.status === 200) {
-                var courses = JSON.parse(xhrCourseDetails.responseText);
-                courseSelect.innerHTML = ''; // Clear existing options
+                                        if (paidAmount >= totalAmount) {
+                                            statusField.value = 'Paid';
+                                        } else if (paidAmount > 0) {
+                                            statusField.value = 'Pending';
+                                        } else {
+                                            statusField.value = 'Unpaid';
+                                        }
+                                    }
 
-                var placeholderOption = document.createElement('option');
-        placeholderOption.value = '';
-        placeholderOption.textContent = 'Choose Course';
-        placeholderOption.disabled = true; // Disable this option
-        placeholderOption.selected = true; // Make it selected by default
-        courseSelect.appendChild(placeholderOption);
+                                    totalAmountField.addEventListener('input', updateStatus);
+                                    paidAmountField.addEventListener('input', updateStatus);
+                                    });
+                                        
+                                    </script>
 
-                if (courses.length > 0) {
-                    courses.forEach(function(course) {
-                        var option = document.createElement('option');
-                        option.value = course.id;
-                        option.textContent = course.name + ' - Ksh.' + course.fee;
-                        option.setAttribute('data-fee', course.fee);
-                        courseSelect.appendChild(option);
-                    });
-                } else {
-                    courseSelect.innerHTML = '<option value="">No courses available for this student</option>';
-                }
-            } else {
-                courseSelect.innerHTML = '<option value="">Error fetching courses</option>';
-            }
-        };
-        xhrCourseDetails.send();
-    } else {
-        courseSelect.innerHTML = '<option value="">Select a student first</option>';
-        totalAmountInput.value = '';
-        remainingAmountInput.value = '';
-        paidAmountInput.value = '';
-    }
-});
-
-
-
-    document.addEventListener('DOMContentLoaded', function () {
-var payFeesModal = new bootstrap.Modal(document.getElementById('payFeesModal'));
-var courseSelect = document.getElementById('courseSelect');
-var totalAmountInput = document.getElementById('totalAmount');
-var paidAmountInput = document.getElementById('paidAmount');
-var remainingAmountInput = document.getElementById('remainingAmount');
-
-// Function to update the amounts
-function updateAmounts() {
-    var selectedOption = courseSelect.options[courseSelect.selectedIndex];
-    var courseFee = parseFloat(selectedOption.getAttribute('data-fee')) || 0;
-    var paidAmount = parseFloat(paidAmountInput.value) || 0;
-    var remainingAmount = courseFee - paidAmount;
-
-    // Set remaining amount and total amount
-    remainingAmountInput.value = remainingAmount > 0 ? remainingAmount : 0;
-    totalAmountInput.value = courseFee; // Always show the full course fee as total amount
-}
-
-// Event listener for when the modal is shown
-payFeesModal._element.addEventListener('show.bs.modal', function () {
-    updateAmounts(); // Update amounts on modal open
-});
-
-// Event listener for course selection change
-courseSelect.addEventListener('change', updateAmounts);
-
-// Recalculate amounts when paid amount changes
-paidAmountInput.addEventListener('input', updateAmounts);
-
-// Initial call to set the total amount and remaining amount
-updateAmounts();
-});
-
-
-              document.addEventListener('DOMContentLoaded', function() {
-const totalAmountField = document.getElementById('totalAmount');
-const paidAmountField = document.getElementById('paidAmount');
-const statusField = document.getElementById('status');
-
-function updateStatus() {
-    const totalAmount = parseFloat(totalAmountField.value) || 0;
-    const paidAmount = parseFloat(paidAmountField.value) || 0;
-
-    if (paidAmount >= totalAmount) {
-        statusField.value = 'Paid';
-    } else if (paidAmount > 0) {
-        statusField.value = 'Pending';
-    } else {
-        statusField.value = 'Unpaid';
-    }
-}
-
-totalAmountField.addEventListener('input', updateStatus);
-paidAmountField.addEventListener('input', updateStatus);
-});
-    
-</script>
-
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+                                    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+                                    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+                                    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+                                    </body>
+                                    </html>

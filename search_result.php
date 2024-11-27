@@ -1,20 +1,19 @@
 <?php
 session_start();
-include('DB_connect.php'); // Include your database connection
-
+include('DB_connect.php'); 
 if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
-    // Store user role for easier access
+    
     $userRole = $_SESSION["role"];
     $adminType = $_SESSION["admin_type"] ?? '';
     $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
     $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
-    // Map roles to display names
+    
     $roleNames = [
         "1" => "Admin",
         "2" => "Student",
         "3" => "Parent"
     ];
-    // Determine role name based on the session
+    
     $displayRole = $roleNames[$userRole] ?? 'Parent';
   }
 
@@ -147,6 +146,7 @@ if ($settingsResult) {
                             placeholder="Search for..."
                             aria-label="search"
                             aria-describedby="button-addon2"
+                            required
                         />
                         <button class="btn btn-success" type="submit" id="button-addon2"><i class="bi bi-search"></i></button>
                     </div>
@@ -293,9 +293,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+             </ul>
+          </div>
+          </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 

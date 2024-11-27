@@ -1,9 +1,6 @@
 <?php
 session_start();
 include("DB_connect.php");
-
-
-include('res/functions.php');
  
 // Initialize variables
 $message = $error = '';
@@ -12,19 +9,18 @@ $system_name = $theme = $text_size = $setting_id = "";
 
 
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
-    // Store user role for easier access
-   
+ 
     $userId = $_SESSION['id'];
     $userRole = $_SESSION["role"];
     $adminType = $_SESSION["admin_type"] ?? '';
-    // Map roles to display names
+   
     $roleNames = [
         "1" => "Admin",
         "2" => "Student",
         "3" => "Parent"
     ];
 }
-    // Determine role name based on the session
+   
     $displayRole = $roleNames[$userRole] ?? 'Parent';
 
     // Fetch settings
@@ -78,7 +74,7 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
             $stmt->bind_param('ssssssssi', $school_name, $school_address, $school_contact_number, $school_email_address, $school_website, $system_name, $theme, $text_size, $setting_id);
 
         } elseif ($displayRole === 'Student'|| $displayRole === 'Parent') {
-            // Student can only update theme and text size
+           
             $query = "UPDATE settings 
                 SET theme = ?, 
                     text_size = ? 
@@ -117,18 +113,17 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     }
     
     if ($stmt = $connect->prepare($query)) {
-        $stmt->bind_param("i", $userId); // "i" for integer type
+        $stmt->bind_param("i", $userId); 
         $stmt->execute();
         $result = $stmt->get_result();
         if ($result->num_rows > 0) {
             $admin = $result->fetch_assoc(); // Fetch associative array
         } else {
-            $admin = null; // Handle user not found case
+            $admin = null; 
         }
         $stmt->close();
     }
-// Fetch user preferences
-  
+
 
 ?>
 <!DOCTYPE html>
@@ -311,9 +306,9 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+                </ul>
+              </div>
+           </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -483,8 +478,6 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
         document.addEventListener('DOMContentLoaded', function () {
     var theme = '<?= htmlspecialchars($theme); ?>';
     var textSize = '<?= htmlspecialchars($text_size); ?>';
-
-    // Ensure that the CSS files are in the correct directory and named correctly
     var themeLink = document.getElementById('theme-style');
     var textSizeLink = document.getElementById('text-size-style');
 

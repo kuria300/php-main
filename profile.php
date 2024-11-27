@@ -162,13 +162,13 @@ if ($userRole === "1") { // Admin
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $userId); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -388,9 +388,9 @@ $connect->close();
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+              </ul>
+            </div>
+          </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -514,14 +514,14 @@ $connect->close();
                                         </div>
 
                                         <div class="form-group">
-    <label for="admin_image">Profile Image: <span class="text-muted">(Optional)</span></label>
-    <div class="image-preview mb-2">
-        <img src="upload/<?php echo htmlspecialchars($user[$imageField] ?? 'default.jpg'); ?>" class="img-fluid img-thumbnail rounded-circle" alt="Profile Image" style="width: 100px; height: 100px;">
-    </div>
-    <input type="file" name="<?php echo $imageField; ?>" id="admin_image" class="form-control">
-    <input type="hidden" name="hidden_admin_image" value="<?php echo htmlspecialchars($user[$imageField]); ?>">
-</div>
-                            <hr>
+                                    <label for="admin_image">Profile Image: <span class="text-muted">(Optional)</span></label>
+                                    <div class="image-preview mb-2">
+                                        <img src="upload/<?php echo htmlspecialchars($user[$imageField] ?? 'default.jpg'); ?>" class="img-fluid img-thumbnail rounded-circle" alt="Profile Image" style="width: 100px; height: 100px;">
+                                    </div>
+                                    <input type="file" name="<?php echo $imageField; ?>" id="admin_image" class="form-control">
+                                    <input type="hidden" name="hidden_admin_image" value="<?php echo htmlspecialchars($user[$imageField]); ?>">
+                                </div>
+                              <hr>
                             <div class="mb-3 mt-5">
                                 <label for="exampleInputEmail1" class="form-label">Email address:</label>
                                 <input type="email" class="form-control" name="admin_email" value="<?php echo htmlspecialchars($user[$userRole == '1' ? 'admin_email' : ($userRole == '2' ? 'student_email' : 'parent_email')] ?? ''); ?>" placeholder="Email" aria-describedby="emailHelp">

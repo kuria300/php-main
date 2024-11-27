@@ -2,28 +2,24 @@
 session_start();
 include('DB_connect.php');
 
-/*function is_login() {
-    return isset($_SESSION["admin_id"]) && isset($_SESSION["role"]);
-  }
-if(!is_login()){
-    header("location: Admin.php");
- }
- function is_master_user(){
-    return isset($_SESSION["admin_type"]) && $_SESSION["admin_type"] === "master";
-}
-if(!is_master_user()){
-    header("location: dashboard.php");
-}*/
+require __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 
-include('res/functions.php');
+// Access sensitive information from environment variables
+$smtp=$_ENV['SMTP'];
+$mails=$_ENV['MAIL'];
+$pass=$_ENV['PASS'];
+$pass2=$_ENV['PASS2'];
+$port=$_ENV['PORT'];
  
 if(isset($_SESSION["id"]) && isset($_SESSION["role"])){
-    // Store user role for easier access
+   
     $userRole = $_SESSION["role"];
     $adminType = $_SESSION["admin_type"] ?? '';
     $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
     $text_size = isset($_COOKIE['text_size']) ? $_COOKIE['text_size'] : 'medium';
-    // Map roles to display names
+    
     $roleNames = [
         "1" => "Admin",
         "2" => "Student",
@@ -51,12 +47,12 @@ if (isset($_POST['add_student'])) {
     $formdata = array();
     $error = array();
 
-    // Get the maximum student ID
+    // Get the maximum student ID in table or the most recent one
     $query = 'SELECT MAX(student_id) AS ID FROM students';
     $result = $connect->query($query);
     $row = $result->fetch_assoc();
     $max_student_id = $row['ID'] ? $row['ID'] : 0;
-
+    // generate a new student ID based on the one before
     $formdata['student_number'] = Generate_student_number($max_student_id);
 
     // Validate form inputs
@@ -135,13 +131,13 @@ if (isset($_POST['add_student'])) {
         $formdata['status'] = trim($_POST['status']);
     }
     $parent_id = intval($_POST['student_parent_name']);
-$parent_query = 'SELECT parent_name FROM parents WHERE parent_id = ?';
-$parent_stmt = $connect->prepare($parent_query);
-$parent_stmt->bind_param('i', $parent_id);
-$parent_stmt->execute();
-$parent_result = $parent_stmt->get_result();
-$parent_row = $parent_result->fetch_assoc();
-$formdata['parent_name'] = $parent_row['parent_name'];
+        $parent_query = 'SELECT parent_name FROM parents WHERE parent_id = ?';
+        $parent_stmt = $connect->prepare($parent_query);
+        $parent_stmt->bind_param('i', $parent_id);
+        $parent_stmt->execute();
+        $parent_result = $parent_stmt->get_result();
+        $parent_row = $parent_result->fetch_assoc();
+        $formdata['parent_name'] = $parent_row['parent_name'];
 
 
 $stmt = $connect->prepare('
@@ -165,14 +161,13 @@ $stmt = $connect->prepare('
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)
 ');
 
-// Check for any preparation errors
 if (!$stmt) {
     die('Prepare failed: ' . htmlspecialchars($connect->error));
 }
 
 // Bind the parameters
 $stmt->bind_param(
-    'sssssssssississ', // 's' for strings, 'i' for integers
+    'sssssssssississ', 
     $formdata['student_number'],
     $formdata['student_email'],
     $formdata['student_name'],
@@ -182,10 +177,10 @@ $stmt->bind_param(
     $formdata['student_contact_number1'],
     $formdata['student_contact_number2'],
     $formdata['student_image'],
-    $formdata['course_id'], // integer
+    $formdata['course_id'], 
     $formdata['course_name'],
     $formdata['status'],
-    $parent_id, // integer
+    $parent_id, 
     $formdata['parent_name'],
     $generated_password 
 );
@@ -198,12 +193,14 @@ if ($stmt->execute()) {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = $_ENV['SMTP'];  // Use 'smtp.gmail.com'
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'eugenekuria66@gmail.com';
-        $mail->Password   = 'iqxl rubd okpk csun';
+        $mail->Username   = $_ENV['MAIL'];  // Use your Gmail address
+        $mail->Password   = $_ENV['PASS']; 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
+        $mail->Port       = $_ENV['PORT'];  // Use port 587
+    
+
 
         // Recipients
         $mail->setFrom('eugenekuria66@gmail.com', 'Eugene Kuria');
@@ -226,9 +223,8 @@ if ($stmt->execute()) {
         header('Location: Student.php?msg=add');
         exit();
     } catch (Exception $e) {
-        // Handle email sending error
         $errors[] = "Message could not be sent. Mailer Error: {$mail->ErrorInfo}";
-        // Optionally, rollback or handle database changes if necessary
+       
     }
 } else {
     $errors[] = "Failed to insert student record.";
@@ -275,17 +271,20 @@ if ($form_submitted) {
     $formdata['student_contact_number2'] = trim($_POST['student_contact_number2']);
     
     // Handle image upload
-    $formdata['student_image'] = $_POST['hidden_student_image']; // This might be used if no new image is uploaded
+    $formdata['student_image'] = $_POST['hidden_student_image']; //used if no new image is uploaded
 
+    // Check if an image file has been uploaded
     if (!empty($_FILES['student_image']['name'])) {
-        $image_name = $_FILES['student_image']['name'];
-        $image_type = $_FILES['student_image']['type'];
-        $temporary_name = $_FILES['student_image']['tmp_name'];
-        $image_size = $_FILES['student_image']['size'];
-        $image_extension = strtolower(pathinfo($image_name, PATHINFO_EXTENSION));
+        $image_name = $_FILES['student_image']['name'];// Original name of the uploaded image
+        $image_type = $_FILES['student_image']['type']; // MIME type of the uploaded image (e.g., image/jpeg)
+        $temporary_name = $_FILES['student_image']['tmp_name']; // Temporary location of the uploaded file
+        $image_size = $_FILES['student_image']['size'];  // Size of the uploaded image in bytes
+        $image_extension = strtolower(pathinfo($image_name, PATHINFO_EXTENSION));  // Extract the image file extension and convert it to lowercase
 
         $valid_extensions = ['jpeg', 'png', 'jpg'];
+        // Check if the image extension is valid and the image size is within the allowed limit (<= 2MB)
         if (in_array($image_extension, $valid_extensions) && $image_size <= 2000000) {
+              // Generate a new unique name for the uploaded image based on current timestamp and a random number
             $new_image_name = time() . '-' . rand() . '.' . $image_extension;
             if (move_uploaded_file($temporary_name, "upload/" . $new_image_name)) {
                 $formdata['student_image'] = $new_image_name;
@@ -320,7 +319,7 @@ if ($form_submitted) {
      }
 
      if (isset($_POST['student_parent_name']) && !empty($_POST['student_parent_name'])) {
-        $parent_id = intval($_POST['student_parent_name']); // Convert to integer
+        $parent_id = intval($_POST['student_parent_name']); 
     
         // Prepare and execute the query to fetch the parent name
         $parent_query = 'SELECT parent_name FROM parents WHERE parent_id = ?';
@@ -334,7 +333,7 @@ if ($form_submitted) {
                 $parent_row = $parent_result->fetch_assoc();
                 $parent_name = $parent_row['parent_name'];
             } else {
-                $parent_name = 'Unknown'; // Or handle as appropriate
+                $parent_name = 'Unknown'; 
             }
             $parent_stmt->close();
         }
@@ -373,10 +372,10 @@ if ($form_submitted) {
 
 $stmt = $connect->prepare($query);
 $stmt->bind_param(
-     'ssssssssssisii', // Parameter types: s for string, i for integer
+     'ssssssssssisii', 
     $formdata['student_name'],
     $formdata['student_email'],
-    $parent_name, // Use fetched parent name
+    $parent_name, 
     $formdata['student_date_of_birth'],
     $formdata['student_address'],
     $formdata['student_date_of_admission'],
@@ -386,10 +385,11 @@ $stmt->bind_param(
     $formdata['status'],
     $formdata['course_id'],
     $formdata['course_name'],
-    $parent_id, // Ensure this is correctly set
-    $_POST['student_id'] // Student ID to identify which record to update
+    $parent_id, 
+    $_POST['student_id'] 
 );
 if ($stmt->execute()) {
+
     // Check if the course has changed
     $old_course_query = 'SELECT course_id FROM students WHERE student_id = ?';
     $old_course_stmt = $connect->prepare($old_course_query);
@@ -417,7 +417,8 @@ if ($stmt->execute()) {
         $insert_enroll_stmt->close();
     }
 
-    $message = "Student updated successfully";
+    header('Location: Student.php?msg=edit');
+    exit();
 } else {
     $errors[] = "Failed to update student";
 }
@@ -439,7 +440,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
             $enrollStmt->execute();
             $enrollStmt->close();
         }
-
+        // Next, delete any related records in the grades table
+        $deleteGradesQuery = "DELETE FROM grades WHERE student_id = ?";
+         if ($gradesStmt = $connect->prepare($deleteGradesQuery)) {
+            $gradesStmt->bind_param('i', $student_id);
+            $gradesStmt->execute();
+            $gradesStmt->close();
+        }
         // Prepare SQL DELETE statement for students
         $deleteStudentQuery = "DELETE FROM students WHERE student_id = ?";
         if ($stmt = $connect->prepare($deleteStudentQuery)) {
@@ -448,11 +455,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
 
             // Execute the statement
             if ($stmt->execute()) {
-                // Redirect or display success message
+               
                 header('Location: Student.php?msg=delete');
                 exit();
             } else {
-                // Handle SQL execution error
+               
                 echo "Error: Could not execute the delete query.";
             }
 
@@ -468,26 +475,27 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_POST['dele
 
 $query = "";
 $imageField = "";
+$id=  $_SESSION['id'];
 
-if ($userRole === "1") { // Admin
+if ($userRole === "1") { 
     $query = "SELECT * FROM admin_users WHERE admin_id = ?";
     $imageField = 'admin_image';
-} elseif ($userRole === "2") { // Student
+} elseif ($userRole === "2") { 
     $query = "SELECT * FROM students WHERE student_id = ?";
     $imageField = 'student_image';
-} else { // Parent
+} else { 
     $query = "SELECT * FROM parents WHERE parent_id = ?";
     $imageField = 'parent_image';
 }
 
 if ($stmt = $connect->prepare($query)) {
-    $stmt->bind_param("i", $userId); // "i" for integer type
+    $stmt->bind_param("i", $id); 
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $admin = $result->fetch_assoc(); // Fetch associative array
     } else {
-        $admin = null; // Handle user not found case
+        $admin = null; 
     }
     $stmt->close();
 }
@@ -508,14 +516,14 @@ if ($settingsResult) {
         
     } else {
         // Handle case when no settings are found
-        $systemName = 'AutoReceipt';  // Fallback value
+        $systemName = 'AutoReceipt';  
         
         // Optionally log or display a message
         error_log("No settings found in the database.");
     }
 } else {
     // Handle query failure
-    $systemName = 'AutoReceipt';  // Fallback value
+    $systemName = 'AutoReceipt'; 
    
     // Optionally log or display a message
     error_log("Query failed: " . $connect->error);
@@ -572,6 +580,7 @@ if ($settingsResult) {
                 placeholder="search for..."
                 aria-label="search"
                 aria-describedby="button-addon2"
+                required
                 />
                 <button class="btn btn-success" type="submit" id="button-addon2"><i class="bi bi-search"></i></button>
               </div>
@@ -718,9 +727,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+             </ul>
+           </div>
+          </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -835,25 +844,25 @@ if ($settingsResult) {
                                            <input type="email" class="form-control" name="student_email" placeholder="Student Email" />
                                          </div>
                                          <div class="mb-3">
-    <label for="parent" class="form-label">Parent<span class="text-danger">*</span></label>
-    <select class="form-select" id="student_parent_name" name="student_parent_name">
-        <option value="">Select Parent</option>
-        <?php
-        // Fetch parents from the database
-        include('DB_connect.php');
-        $query = "SELECT parent_id, parent_name FROM parents";
-        $result = $connect->query($query);
-        if ($result->num_rows > 0) {
-            while ($row = $result->fetch_assoc()) {
-                echo '<option value="' . htmlspecialchars($row['parent_id']) . '">' . htmlspecialchars($row['parent_name']) . '</option>';
-            }
-        } else {
-            echo '<option value="">No parents available</option>';
-        }
-        $connect->close();
-        ?>
-    </select>
-</div>
+                                                <label for="parent" class="form-label">Parent<span class="text-danger">*</span></label>
+                                                <select class="form-select" id="student_parent_name" name="student_parent_name">
+                                                    <option value="">Select Parent</option>
+                                                    <?php
+                                                    // Fetch parents from the database
+                                                    include('DB_connect.php');
+                                                    $query = "SELECT parent_id, parent_name FROM parents";
+                                                    $result = $connect->query($query);
+                                                    if ($result->num_rows > 0) {
+                                                        while ($row = $result->fetch_assoc()) {
+                                                            echo '<option value="' . htmlspecialchars($row['parent_id']) . '">' . htmlspecialchars($row['parent_name']) . '</option>';
+                                                        }
+                                                    } else {
+                                                        echo '<option value="">No parents available</option>';
+                                                    }
+                                                    $connect->close();
+                                                    ?>
+                                                </select>
+                                            </div>
                                          <div class="mb-3">
                                               <label>Student Date of Birth<span class="text-danger">*</span></label>
                                               <input type="date" class="form-control date-picker" name="student_date_of_birth" />
@@ -923,7 +932,7 @@ if ($settingsResult) {
                         
                       }else if($_GET['action'] == 'edit'){
                           if(isset($_GET['id'])){
-                            $student_id = intval($_GET['id']); // Ensure student_id is an integer
+                            $student_id = intval($_GET['id']); 
 
                             // Prepare and execute the query
                             $stmt = $connect->prepare("SELECT * FROM students WHERE student_id = ?");
@@ -978,26 +987,26 @@ if ($settingsResult) {
                                            <input type="email" class="form-control" name="student_email" placeholder="Student Email" value="<?php echo htmlspecialchars($user_row['student_email']); ?>" />
                                          </div>
                                          <div class="mb-3">
-    <label for="parent" class="form-label">Parent<span class="text-danger">*</span></label>
-    <select class="form-select" id="student_parent_name" name="student_parent_name">
-        <option value="">Select Parent</option>
-        <?php
-        // Fetch parents from the database
-        include('DB_connect.php');
-        $query = "SELECT parent_id, parent_name FROM parents";
-        $result = $connect->query($query);
-        if ($result->num_rows > 0) {
-            while ($row = $result->fetch_assoc()) {
-                $selected = (isset($formdata['parent_id']) && $formdata['parent_id'] == $row['parent_id']) ? 'selected' : '';
-                echo '<option value="' . htmlspecialchars($row['parent_id']) . '" ' . $selected . '>' . htmlspecialchars($row['parent_name']) . '</option>';
-            }
-        } else {
-            echo '<option value="">No parents available</option>';
-        }
-        $connect->close();
-        ?>
-    </select>
-</div>
+                                                <label for="parent" class="form-label">Parent<span class="text-danger">*</span></label>
+                                                <select class="form-select" id="student_parent_name" name="student_parent_name">
+                                                    <option value="">Select Parent</option>
+                                                    <?php
+                                                    // Fetch parents from the database
+                                                    include('DB_connect.php');
+                                                    $query = "SELECT parent_id, parent_name FROM parents";
+                                                    $result = $connect->query($query);
+                                                    if ($result->num_rows > 0) {
+                                                        while ($row = $result->fetch_assoc()) {
+                                                            $selected = (isset($formdata['parent_id']) && $formdata['parent_id'] == $row['parent_id']) ? 'selected' : '';
+                                                            echo '<option value="' . htmlspecialchars($row['parent_id']) . '" ' . $selected . '>' . htmlspecialchars($row['parent_name']) . '</option>';
+                                                        }
+                                                    } else {
+                                                        echo '<option value="">No parents available</option>';
+                                                    }
+                                                    $connect->close();
+                                                    ?>
+                                                </select>
+                                            </div>
                                          <div class="mb-3">
                                               <label>Student Date of Birth<span class="text-danger">*</span></label>
                                               <input type="date" class="form-control date-picker" name="student_date_of_birth" value="<?php echo htmlspecialchars($user_row['student_date_of_birth']); ?>" />
@@ -1169,7 +1178,7 @@ if ($settingsResult) {
                 window.location.href = event.target.href;
             }
         }
-        
+        //DataTable is initialized and ready to use once the page content is fully loaded.
         $(document).ready(function() {
     $('#student_data').DataTable({
         processing: true,
@@ -1178,9 +1187,11 @@ if ($settingsResult) {
         order: [],
         scrollX: false,  // Ensure horizontal scrolling is disabled
         ajax: {
+            //The URL to which the AJAX request is sent. In this case, data will be fetched from here
             url: "action.php",
             type: "POST",
             data: function(d) {
+                //request is for fetching student data.
                 d.action = 'fetch_student';
             }
         }

@@ -1,8 +1,8 @@
 <?php
-require('C:\xampp\htdocs\sms\tcpdf\tcpdf.php'); // Adjust the path as needed
+require('C:\xampp\htdocs\sms\tcpdf\tcpdf.php'); 
 include('DB_connect.php');
 
-session_start(); // Ensure the session is started
+session_start(); 
 
 if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
     $payment_id = (int)$_GET['payment_id'];
@@ -21,7 +21,7 @@ if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
     // Title styling
     $title = '<span style="color: #800080;">A</span>utoReceipt';
     $pdf->SetFont('helvetica', 'B', 16);
-    $pdf->SetFillColor(255, 255, 255); // White background
+    $pdf->SetFillColor(255, 255, 255);
     $pdf->Rect(10, 10, 190, 10, 'F'); // Background rectangle for the title
     $pdf->SetXY(10, 10); // Position for the title
     $pdf->writeHTMLCell(0, 10, '', '', $title, 0, 1, 0, true, 'C', true);
@@ -60,7 +60,7 @@ if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
                 $paymentMethod = $row['payment_method'];
                 $totalAmount = $row['total_amount'];
                 $paidAmount = $row['paid_amount'];
-                $remainingAmount = $totalAmount - $paidAmount; // Calculating remaining amount
+                $remainingAmount = $totalAmount - $paidAmount; 
                 $status = $row['status'];
 
                 // QR Code generation
@@ -99,10 +99,11 @@ if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
                 $pdf->SetX(5);
 
                 // Define column widths
-                $pdf->Cell(45, 10, 'Payment Date', 1, 0, 'C');
+                $pdf->Cell(30, 10, 'Payment Date', 1, 0, 'C');
                 $pdf->Cell(40, 10, 'Payment Method', 1, 0, 'C');
-                $pdf->Cell(40, 10, 'Total Amount', 1, 0, 'C');
-                $pdf->Cell(40, 10, 'Paid Amount', 1, 0, 'C');
+                $pdf->Cell(38, 10, 'Total Amount', 1, 0, 'C');
+                $pdf->Cell(36, 10, 'Paid Amount', 1, 0, 'C');
+                $pdf->Cell(20, 10, 'R/M', 1, 0, 'C');
                 $pdf->Cell(37, 10, 'Payment Number', 1, 1, 'C');
 
                 // Reset font for table rows
@@ -110,7 +111,7 @@ if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
 
                 // Fetch payment history
                 $paymentStmt = $connect->prepare("
-                    SELECT payment_date, payment_method, total_amount, paid_amount, payment_number
+                    SELECT payment_date, payment_method, total_amount, paid_amount, remaining_amount, payment_number
                     FROM deposit
                     WHERE student_id = ?
                 ");
@@ -121,11 +122,13 @@ if (isset($_GET['payment_id']) && isset($_SESSION['id'])) {
                     $paymentResult = $paymentStmt->get_result();
 
                     while ($payment = $paymentResult->fetch_assoc()) {
+                        $formatted_payment_date = date('Y-m-d', strtotime($payment['payment_date']));
                         $pdf->SetX(5);
-                        $pdf->Cell(45, 10, htmlspecialchars($payment['payment_date']), 1);
+                        $pdf->Cell(30, 10, htmlspecialchars($formatted_payment_date), 1);
                         $pdf->Cell(40, 10, htmlspecialchars($payment['payment_method']), 1);
-                        $pdf->Cell(40, 10, htmlspecialchars($payment['total_amount']), 1);
-                        $pdf->Cell(40, 10, htmlspecialchars($payment['paid_amount']), 1);
+                        $pdf->Cell(38, 10, htmlspecialchars($payment['total_amount']), 1);
+                        $pdf->Cell(36, 10, htmlspecialchars($payment['paid_amount']), 1);
+                        $pdf->Cell(20, 10, htmlspecialchars(number_format($payment['remaining_amount'], 2)), 1);
                         $pdf->Cell(37, 10, htmlspecialchars($payment['payment_number']), 1);
                         $pdf->Ln();
                     }

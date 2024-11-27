@@ -44,8 +44,10 @@ if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
         while ($row = $result->fetch_assoc()) {
             $notifications[] = $row;
         }
+        $notifications = array_map("unserialize", array_unique(array_map("serialize", $notifications)));
         $stmt->close();
     } 
+    
 }
 if (isset($_SESSION['id']) && $displayRole === 'Parent') {
     $parent_id = $_SESSION['id'];
@@ -129,16 +131,23 @@ if ($connect instanceof mysqli) {
          SELECT a.course_id, c.course_name, a.attendance_percentage
     FROM attendance a
     JOIN courses c ON a.course_id = c.course_id
-    WHERE a.student_id = ?
+    WHERE a.student_id = ? AND a.course_id = ?
         ";
     
         $stmt = $connect->prepare($query);
-        $stmt->bind_param('i', $student_id);
+        $stmt->bind_param('ii', $student_id,  $course_id);
         $stmt->execute();
         $result = $stmt->get_result();
         $data = $result->fetch_assoc();
     
-        $attendance_percentages[$data['course_name']] = $data['attendance_percentage'];
+        if ($data) {
+
+           
+            $attendance_percentages[$data['course_name']] = $data['attendance_percentage'];
+        } else {
+            // Handle the case where there is no data for the course
+            $attendance_percentages[$course_id] = 'No data available';
+        }
 
     }
 $stmt->close();
@@ -165,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['notification_id'])) {
     $stmt->execute();
     $stmt->close();
 }
+
 
 
 
@@ -382,6 +392,7 @@ $connect->close();
                         placeholder="Search for..."
                         aria-label="search"
                         aria-describedby="button-addon2"
+                        required
                     />
                     <button class="btn btn-success" type="submit" id="button-addon2"><i class="bi bi-search"></i></button>
                 </div>
@@ -528,10 +539,10 @@ $connect->close();
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
-                <li class="sidebar-list-item">
+             </ul>
+           </div>
+         </div>
+            <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
                     href="#collapsePayments" 
@@ -608,7 +619,7 @@ $connect->close();
         </div>
         <?php if (!empty($notifications)): ?>
             <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <?php foreach ($notifications as $notification): ?>
+                <?php foreach ($notifications as &$notification): ?>
                     <div class="notification-item">
                         <?php echo htmlspecialchars($notification['message']); ?>
                         <form method="post" action="" class="d-inline">
@@ -692,7 +703,7 @@ $connect->close();
         </div>
         <?php if (!empty($notifications)): ?>
             <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <?php foreach ($notifications as $notification): ?>
+                <?php foreach ($notifications as &$notification): ?>
                     <div class="notification-item">
                         <?php echo htmlspecialchars($notification['message']); ?>
                         <form method="post" action="" class="d-inline">
@@ -736,10 +747,14 @@ $connect->close();
     <span class="material-symbols-outlined">check_circle</span>
 </div>
 <?php if (!empty($attendance_percentages)): ?>
-    <?php foreach ($attendance_percentages as $course_id => $attendance_percentage): ?>
-        <?php if ($attendance_percentage > 0): ?> <!-- Only display if greater than 0 -->
+    <?php foreach ($attendance_percentages as $course_name => $attendance_percentage): ?>
+        <?php if ($attendance_percentage === 'No data available'): ?> <!-- Display message if no data is available -->
             <div class="attendance-info">
-                <h1><?php echo htmlspecialchars($data['course_name']); ?> - <?php echo htmlspecialchars($attendance_percentage); ?>%</h1>
+                <h1>No data available</h1>
+            </div>
+        <?php elseif ($attendance_percentage > 0): ?> <!-- Only display if attendance percentage is greater than 0 -->
+            <div class="attendance-info">
+                <h1><?php echo htmlspecialchars($course_name); ?> - <?php echo htmlspecialchars($attendance_percentage) . '%'; ?></h1>
             </div>
         <?php endif; ?>
     <?php endforeach; ?>

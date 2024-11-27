@@ -1,15 +1,11 @@
 <?php
 session_start();
  include('DB_connect.php');
-
- include('res/functions.php');
  
 if (!isset($_SESSION["role"])) {
     header("Location: Admin.php");
     exit;
 }
-
-
 if (isset($_SESSION["id"]) && isset($_SESSION["role"])) {
     // Store user role for easier access
 
@@ -438,9 +434,9 @@ if ($settingsResult) {
                         </a>
                     </li>
                 <?php endif; ?>
-        </ul>
-    </div>
-</div>
+                </ul>
+            </div>
+        </div>
                 <li class="sidebar-list-item">
                     <a class="nav-link px-3 mt-3 sidebar-link active" 
                     data-bs-toggle="collapse" 
@@ -545,7 +541,6 @@ if ($settingsResult) {
                                 <span class="material-symbols-outlined text-bold">manage_accounts</span> Add New Fees
                             </div>
                             <div class="card-body">
-                           
                             
                      </div>
                 </div>
@@ -731,10 +726,10 @@ if ($settingsResult) {
             if ($displayRole === 'Admin') {
                 // Admins can view all attendance records
                 $query = "SELECT a.attendance_id, s.student_name, c.course_name, a.semester_start, a.semester_end, a.present_days, a.attendance_percentage
-FROM attendance a
-JOIN courses c ON a.course_id = c.course_id
-JOIN students s ON a.student_id = s.student_id
-LIMIT ? OFFSET ?";
+                FROM attendance a
+                JOIN courses c ON a.course_id = c.course_id
+                JOIN students s ON a.student_id = s.student_id
+                LIMIT ? OFFSET ?";
                 $stmt = $connect->prepare($query);
                 $stmt->bind_param("ii", $results_per_page, $offset);
             } elseif ($displayRole === 'Parent') {
