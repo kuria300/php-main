@@ -77,9 +77,6 @@ The receipt is then sent via email (or another communication method, depending o
 
 If you would like to contribute to this project, feel free to fork the repository and submit a pull request with your changes. Please ensure that your code adheres to the project's coding standards and includes necessary tests where applicable.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgements
 
